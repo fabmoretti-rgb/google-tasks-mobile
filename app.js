@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.4';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -553,13 +553,15 @@ const GTD_ROLE_RE = {
   projects: /progett|project/,
   waiting: /attesa|waiting|delegat/,
   someday: /giorno|forse|someday|maybe/,
+  reading: /da leggere|leggere|verific|rivedere|lettur|to read|review/,
 };
-const ROLE_LABELS = { inbox: 'INBOX (raccolta)', next: 'Prossime azioni', projects: 'Progetti', waiting: 'In attesa', someday: 'Un giorno / forse' };
+const ROLE_LABELS = { inbox: 'INBOX (raccolta)', next: 'Prossime azioni', reading: 'Da leggere / verificare', projects: 'Progetti', waiting: 'In attesa', someday: 'Un giorno / forse' };
 const CTX_RE = /(^|\s)(@[\p{L}\p{N}_-]+)/gu;
 const WAIT_RE = /⏳ In attesa dal (\d{2})\/(\d{2})\/(\d{4})(?: — da: ([^\n]+))?/;
 const WAIT_LINE_RE = /\n?⏳ In attesa dal \d{2}\/\d{2}\/\d{4}(?: — da: [^\n]+)?/;
 
 function roleList(role) {
+  if (!GTD_ROLE_RE[role]) return null;
   const saved = prefs.roles[role];
   if (saved && findList(saved)) return findList(saved);
   return store.lists.find((l) => GTD_ROLE_RE[role].test(norm(l.title))) || null;
@@ -699,6 +701,7 @@ let pushes = 0;
 
 function go(r, { replace = false } = {}) {
   flushEdits();
+  if (route.v === 'search' && searchQ) rememberSearch(searchQ); // aprire un risultato = ricerca da ricordare
   r = { tab: TABS[r.v] ? r.v : route.tab, ...r };
   if (replace) history.replaceState(r, ''); else { history.pushState(r, ''); pushes++; }
   route = r;
@@ -959,9 +962,10 @@ function viewToday(p) {
   p.append(el('p', { class: 'sub', style: 'margin-top:1rem' }, date));
   p.append(el('div', { class: 'cards' },
     el('button', { class: `card${b.overdue.length ? ' red' : ''}`, onclick: () => document.getElementById('g-overdue')?.scrollIntoView({ behavior: 'smooth' }) },
-      el('span', { class: 'n' }, b.overdue.length), el('span', { class: 'l' }, 'scadute')),
-    el('button', { class: 'card blue' }, el('span', { class: 'n' }, b.today.length), el('span', { class: 'l' }, 'in scadenza oggi')),
-    el('button', { class: 'card blue', onclick: () => tab('inbox') }, el('span', { class: 'n' }, inboxN), el('span', { class: 'l' }, 'nella INBOX da elaborare')),
+      el('span', { class: 'n' }, b.overdue.length), el('span', { class: 'l' }, b.overdue.length === 1 ? 'scaduta' : 'scadute')),
+    el('button', { class: 'card blue', onclick: () => document.getElementById('g-today')?.scrollIntoView({ behavior: 'smooth' }) },
+      el('span', { class: 'n' }, b.today.length), el('span', { class: 'l' }, 'in scadenza oggi')),
+    el('button', { class: 'card blue', onclick: () => tab('inbox') }, el('span', { class: 'n' }, inboxN), el('span', { class: 'l' }, 'in INBOX da elaborare')),
     el('button', { class: `card${late ? ' amber' : ' green'}`, onclick: () => go({ v: 'delegated' }) }, el('span', { class: 'n' }, late), el('span', { class: 'l' }, 'deleghe da sollecitare'))));
   if (ago == null || ago > 7) {
     p.append(el('div', { class: 'banner info', style: 'margin:.5rem 0' }, icon('review'),
@@ -969,7 +973,7 @@ function viewToday(p) {
       el('button', { class: 'btn primary', onclick: () => go({ v: 'review' }) }, 'Inizia')));
   }
   if (b.overdue.length) p.append(el('span', { id: 'g-overdue' }), ...group('today-overdue', 'Scadute', b.overdue, { cls: 'danger', opts: { showList: true } }));
-  p.append(...group('today-today', 'Oggi', b.today, { opts: { showList: true } }));
+  p.append(el('span', { id: 'g-today' }), ...group('today-today', 'Oggi', b.today, { opts: { showList: true } }));
   if (b.week.length) p.append(...group('today-week', 'Prossimi 7 giorni', b.week, { opts: { showList: true } }));
   if (!b.overdue.length && !b.today.length && !b.week.length) p.append(el('div', { class: 'empty' }, icon('today'), el('p', {}, 'Nessuna scadenza: giornata libera.')));
 }
@@ -1160,7 +1164,8 @@ function viewProcess(p) {
   const choice = (kind, ico, label, hint, fn) => el('button', {
     class: `choice k-${kind}`, disabled: ['next', 'projects', 'waiting', 'someday'].includes(kind) && missing(kind),
     onclick: fn,
-  }, el('span', { class: 'ci', html: ICONS[ico] }), el('span', {}, el('b', {}, label), el('small', {}, hint)));
+  }, el('b', {}, label), el('span', { class: 'hint' }, el('span', { class: 'ico', html: ICONS[ico] }), el('span', {}, hint)));
+  const reading = roleList('reading');
 
   p.append(el('div', { class: 'proc-card' },
     el('div', { class: 'proc-pos' }, `Voce ${all.indexOf(t) + 1} di ${all.length}`),
@@ -1170,12 +1175,13 @@ function viewProcess(p) {
     el('div', { class: 'field' }, el('span', { class: 'lab' }, 'Scadenza'), dueRow)),
   el('h2', { class: 'proc-q' }, 'Cosa ne faccio?'),
   el('div', { class: 'choices' },
-    choice('done', 'done', 'Fatto', 'Meno di 2 minuti: fallo subito', () => processAction(t, 'done', read())),
-    choice('next', 'arrow', 'Prossima azione', `Va in “${listName(roleList('next')) || '—'}”`, () => processAction(t, 'next', read())),
-    choice('projects', 'folder', 'Progetto', 'Serve più di un’azione', () => processAction(t, 'projects', read())),
-    choice('waiting', 'hourglass', 'In attesa di…', 'Delegato, o aspetti qualcuno', () => processAction(t, 'waiting', read())),
-    choice('someday', 'cloud', 'Un giorno / forse', 'Interessante, ma non ora', () => processAction(t, 'someday', read()))),
-  el('div', { class: 'choices secondary' },
+    choice('done', 'done', 'Fatto', 'Meno di 2 minuti', () => processAction(t, 'done', read())),
+    choice('next', 'arrow', 'Prossima azione', listName(roleList('next')) || '—', () => processAction(t, 'next', read())),
+    reading ? choice('reading', 'notes', 'Da leggere', listName(reading), () => processAction(t, 'reading', read())) : null,
+    choice('projects', 'folder', 'Progetto', 'Più di un’azione', () => processAction(t, 'projects', read())),
+    choice('waiting', 'hourglass', 'In attesa di…', 'Delegato', () => processAction(t, 'waiting', read())),
+    choice('someday', 'cloud', 'Un giorno / forse', 'Non ora', () => processAction(t, 'someday', read())),
+    choice('other', 'lists', 'Altro elenco…', 'Scegli dall’elenco completo', () => processAction(t, 'other', read())),
     choice('delete', 'delete', 'Elimina', 'Non serve', () => processAction(t, 'delete')),
     choice('skip', 'skip', 'Salta', 'Decidi dopo', () => processAction(t, 'skip'))));
   requestAnimationFrame(() => { autosize(title); autosize(notes); });
@@ -1190,6 +1196,11 @@ async function processAction(t, kind, data) {
   if (data.title && data.title !== t.title) patch.title = data.title;
   if (data.notes !== (t.notes || '')) patch.notes = data.notes;
   if ((t.due || '').slice(0, 10) !== (data.due || '').slice(0, 10)) patch.due = data.due;
+  let dest = GTD_ROLE_RE[kind] ? roleId(kind) : null;
+  if (kind === 'other') {
+    dest = await pickList('Sposta in…', inboxId);
+    if (!dest) return;
+  }
   if (kind === 'waiting') {
     const who = await askText('In attesa di chi?', '', { placeholder: 'Nome (facoltativo)', ok: 'Sposta in “In attesa”', optional: true });
     if (who === null) return;
@@ -1200,7 +1211,7 @@ async function processAction(t, kind, data) {
     patchTask(inboxId, t.id, { status: 'completed', completed: new Date().toISOString() });
     toast('Fatto ✓');
   } else {
-    moveToList(inboxId, t.id, roleId(kind));
+    moveToList(inboxId, t.id, dest);
   }
   navigator.vibrate?.(12);
   render({ top: true });
@@ -1218,7 +1229,13 @@ function viewSearch(p) {
   const input = el('input', { type: 'search', 'aria-label': 'Cerca in tutti gli elenchi', placeholder: 'Cerca in tutti gli elenchi…', value: searchQ, enterkeyhint: 'search', autocomplete: 'off' });
   const results = el('div');
   let timer;
-  input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { searchQ = input.value.trim(); renderResults(); }, 150); });
+  let memo;
+  input.addEventListener('input', () => {
+    clearTimeout(timer); clearTimeout(memo);
+    timer = setTimeout(() => { searchQ = input.value.trim(); renderResults(); }, 150);
+    memo = setTimeout(() => rememberSearch(input.value), 2000); // ricordata dopo 2 s senza scrivere
+  });
+  input.addEventListener('blur', () => { clearTimeout(memo); rememberSearch(input.value); });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { rememberSearch(input.value); input.blur(); } });
   const clear = el('button', { class: 'bar-btn', title: 'Cancella', html: ICONS.close, onclick: () => { input.value = ''; searchQ = ''; renderResults(); input.focus(); } });
   p.append(el('div', { class: 'searchbox' }, el('div', { class: 'searchfield' }, icon('search'), input, clear),
@@ -1469,8 +1486,16 @@ function sheet(build) {
   const inner = el('div', { class: 'sheet-in' }, el('div', { class: 'grip', 'aria-hidden': 'true' }));
   dlg.append(inner);
   let onClose = null;
-  const close = () => { if (dlg.open) dlg.close(); };
-  dlg.addEventListener('close', () => { dlg.remove(); onClose?.(); });
+  let closed = false;
+  // chiusura indipendente dall'evento "close" (che alcuni browser ritardano)
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (dlg.open) dlg.close();
+    dlg.remove();
+    onClose?.();
+  };
+  dlg.addEventListener('close', close);
   dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
   build(inner, close, (fn) => { onClose = fn; });
   document.body.append(dlg);
@@ -1530,6 +1555,23 @@ function openTaskActions(listId, taskId, { fromDetail = false } = {}) {
     marked ? { icon: 'close', label: 'Togli la delega', fn: () => undelegateTask(listId, t.id) } : null,
     { icon: 'delete', label: 'Elimina', danger: true, fn: () => removeTask(listId, t.id) },
   ]);
+}
+
+/** Elenco completo degli elenchi: restituisce l'id scelto (o null). */
+function pickList(title, excludeId) {
+  return new Promise((resolve) => {
+    let chosen = null;
+    sheet((s, close, onClose) => {
+      s.append(el('h2', {}, title), el('div', { class: 'sheet-actions' },
+        store.lists.filter((l) => l.id !== realId(excludeId)).map((l) => {
+          const r = roleOf(l.id);
+          return el('button', { onclick: () => { chosen = l.id; close(); } },
+            icon(r === 'waiting' ? 'hourglass' : r === 'projects' ? 'folder' : r === 'someday' ? 'cloud' : r === 'reading' ? 'notes' : 'lists'),
+            el('span', {}, listName(l), r ? el('small', { class: 'role-hint' }, ROLE_LABELS[r]) : null));
+        })));
+      onClose(() => resolve(chosen));
+    });
+  });
 }
 
 function chooseList(fromId, taskId) {
