@@ -24,6 +24,7 @@ App web installabile (PWA) per usare **Google Tasks con gli strumenti GTD** sul 
 - **Senza rete**: mostra le ultime attività salvate. Le modifiche restano in coda e partono appena torna la connessione.
 - **Condividi → Tasks GTD**: da qualsiasi app Android, testo o link diventano una nuova attività nella INBOX.
 - Il tasto **Indietro** di Android funziona dentro l'app.
+- **Cambio account rapido**: tocca l'avatar in alto a destra. Gli account già usati sul telefono si attivano con un tocco; da lì puoi anche aggiungerne uno o uscire.
 
 ## Pubblicazione (una volta sola)
 L'app deve stare su un indirizzo `https`. Il modo gratuito più semplice è **GitHub Pages**.

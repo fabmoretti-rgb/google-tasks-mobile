@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.2';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -120,12 +120,14 @@ const auth = {
   clientId() { return (window.GT_CONFIG?.clientId || LS.get('clientId') || '').trim(); },
   redirectUri() { const u = new URL('./', location.href); return u.origin + u.pathname; },
 
-  begin({ silent = false, selectAccount = false, consent = false } = {}) {
+  begin({ silent = false, selectAccount = false, consent = false, hint = null } = {}) {
     const cid = this.clientId();
     if (!cid) { go({ v: 'setup' }, { replace: true }); return; }
     flushEdits();
     const state = uid();
-    sessionStorage.setItem('gt.oauth', JSON.stringify({ state, route, silent }));
+    // cambiando account si riparte dalla schermata iniziale (gli elenchi sono diversi)
+    const back = hint || selectAccount ? { v: prefs.home, tab: prefs.home } : route;
+    sessionStorage.setItem('gt.oauth', JSON.stringify({ state, route: back, silent }));
     const p = new URLSearchParams({
       client_id: cid, redirect_uri: this.redirectUri(), response_type: 'token',
       scope: SCOPES, include_granted_scopes: 'true', state,
@@ -133,7 +135,8 @@ const auth = {
     if (silent) p.set('prompt', 'none');
     else if (consent) p.set('prompt', 'consent select_account');
     else if (selectAccount || !this.profile) p.set('prompt', 'select_account');
-    if (this.profile?.email && !selectAccount) p.set('login_hint', this.profile.email);
+    if (hint) p.set('login_hint', hint);
+    else if (this.profile?.email && !selectAccount) p.set('login_hint', this.profile.email);
     location.assign(`${AUTH_URL}?${p}`);
   },
 
@@ -156,6 +159,7 @@ const auth = {
         const changed = this.profile?.email && this.profile.email !== u.email;
         this.profile = { email: u.email, name: u.name, picture: u.picture };
         LS.set('profile', this.profile);
+        rememberAccount(this.profile);
         if (changed) resetData(); // altro account: via i dati del precedente
       }
     } catch { /* il profilo è solo cosmetico */ }
@@ -170,6 +174,64 @@ const auth = {
     if (t) fetch(REVOKE_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token: t }) }).catch(() => {});
   },
 };
+
+/* ---------- Account usati su questo telefono (per il cambio rapido) ---------- */
+function knownAccounts() { return LS.get('accounts', []); }
+function rememberAccount(p) {
+  if (!p?.email) return;
+  LS.set('accounts', [p, ...knownAccounts().filter((a) => a.email !== p.email)].slice(0, 6));
+}
+function forgetAccount(email) { LS.set('accounts', knownAccounts().filter((a) => a.email !== email)); }
+
+function avatar(p, cls = 'avatar') {
+  const letter = (p?.name || p?.email || '?').trim().charAt(0).toUpperCase();
+  const box = el('span', { class: cls, 'aria-hidden': 'true' }, letter);
+  if (p?.picture) {
+    const img = el('img', { src: p.picture, alt: '', referrerpolicy: 'no-referrer' });
+    img.addEventListener('error', () => img.remove());
+    box.append(img);
+  }
+  return box;
+}
+
+/** Pannello account: tocca un account per passarci subito. */
+async function openAccounts() {
+  const cur = auth.profile;
+  const others = knownAccounts().filter((a) => a.email !== cur?.email);
+  const switchTo = async (fn) => {
+    flushEdits();
+    if (outbox.length) await flushOutbox();
+    if (outbox.length) {
+      toast('Ci sono modifiche non ancora inviate: riprova quando c’è rete, così non vanno perse.', { error: true });
+      return;
+    }
+    fn();
+  };
+  sheet((s, close) => {
+    const row = (p, { current = false, onclick } = {}) => el('button', {
+      class: `acct${current ? ' current' : ''}`, onclick, 'aria-current': current ? 'true' : null,
+      'aria-label': `${current ? 'Account in uso: ' : 'Passa a '}${p.email}`,
+    }, avatar(p), el('span', { class: 'acct-txt' }, el('b', {}, p.name || p.email), p.name ? el('small', {}, p.email) : null),
+    current ? el('span', { class: 'acct-check', html: ICONS.done }) : el('span', { class: 'task-go', html: ICONS.chevron }));
+    s.append(el('h2', {}, 'Account'),
+      cur ? row(cur, { current: true }) : el('p', { class: 'sub' }, 'Nessun account collegato.'),
+      others.length ? el('p', { class: 'sub', style: 'margin:1rem 0 .25rem' }, 'Passa a:') : null,
+      ...others.map((a) => row(a, { onclick: () => { close(); switchTo(() => auth.begin({ hint: a.email })); } })),
+      el('div', { class: 'sheet-actions', style: 'margin-top:.75rem' },
+        el('button', { onclick: () => { close(); switchTo(() => auth.begin({ selectAccount: true })); } }, icon('add'), el('span', {}, 'Aggiungi un altro account')),
+        cur ? el('button', {
+          class: 'danger',
+          onclick: async () => {
+            close();
+            if (await confirmBox('Uscire?', `Esci da ${cur.email}. Le attività restano su Google; su questo telefono verranno tolte.`, 'Esci')) {
+              forgetAccount(cur.email);
+              auth.logout();
+              go({ v: 'login' }, { replace: true });
+            }
+          },
+        }, icon('logout'), el('span', {}, 'Esci da questo account')) : null));
+  });
+}
 
 /** Serve un nuovo accesso: prova in silenzio (una volta), altrimenti chiede. */
 function needAuth() {
@@ -747,6 +809,12 @@ function render({ soft = false, top = false } = {}) {
     actions.push(el('button', { id: 'refreshBtn', class: `bar-btn${state.syncing || flushing ? ' spin' : ''}`, title: 'Aggiorna', html: ICONS.refresh, onclick: () => syncAll() }));
   }
   if (def.menu) actions.push(el('button', { class: 'bar-btn', title: 'Altre azioni', html: ICONS.moreVert, onclick: def.menu }));
+  if (!def.gate && auth.clientId()) {
+    actions.push(el('button', {
+      class: 'bar-btn acct-btn', onclick: openAccounts,
+      'aria-label': auth.profile ? `Account: ${auth.profile.email}. Tocca per cambiare account` : 'Account: accedi',
+    }, auth.profile ? avatar(auth.profile) : el('span', { class: 'ico', html: ICONS.person })));
+  }
   $('#barActions').replaceChildren(...actions);
 
   // Navigazione e "+"
@@ -1327,7 +1395,7 @@ function viewSettings(p) {
     el('section', { class: 'section' }, el('h3', {}, 'Account Google'),
       el('p', {}, auth.profile ? `${auth.profile.name ? `${auth.profile.name} — ` : ''}${auth.profile.email}` : 'Nessun account collegato.'),
       el('div', { class: 'btn-row' },
-        el('button', { class: 'btn', onclick: () => auth.begin({ selectAccount: true }) }, icon('person'), auth.profile ? 'Cambia account' : 'Accedi'),
+        el('button', { class: 'btn', onclick: openAccounts }, icon('person'), auth.profile ? 'Cambia account' : 'Accedi'),
         auth.profile ? el('button', { class: 'btn danger', onclick: async () => { if (await confirmBox('Uscire?', 'Le attività restano su Google; su questo telefono verranno tolte.', 'Esci')) { auth.logout(); go({ v: 'login' }, { replace: true }); } } }, icon('logout'), 'Esci') : null)),
     el('section', { class: 'section' }, el('h3', {}, 'Configurazione'),
       setupFields(),
@@ -1598,6 +1666,7 @@ async function boot() {
   if (location.search) history.replaceState(null, '', location.pathname);
 
   loadCache();
+  rememberAccount(auth.profile);
   const r = await auth.handleRedirect();
   route = r?.route ? { ...r.route } : { v: startTab, tab: startTab };
   history.replaceState(route, '');
