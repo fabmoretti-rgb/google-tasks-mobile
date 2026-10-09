@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#fdd21f">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Google Tasks con strumenti GTD, pensato per il telefono">
+  <title>Tasks GTD</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="app">
+    <header class="appbar">
+      <button id="backBtn" class="bar-btn" aria-label="Indietro" hidden></button>
+      <img id="logo" class="logo" src="icons/icon.svg" alt="">
+      <h1 id="title">Tasks GTD</h1>
+      <span id="barActions"></span>
+    </header>
+    <div id="banners"></div>
+    <main id="main" tabindex="-1"></main>
+  </div>
+
+  <button id="fab" class="fab" hidden></button>
+
+  <nav id="nav" class="bottomnav" aria-label="Sezioni principali">
+    <button data-tab="today"></button>
+    <button data-tab="lists"></button>
+    <button data-tab="inbox"></button>
+    <button data-tab="search"></button>
+    <button data-tab="more"></button>
+  </nav>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
