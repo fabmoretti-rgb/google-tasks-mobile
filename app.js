@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -891,7 +891,11 @@ function attachGestures(row, node, { right, left, long }) {
     node.style.transform = '';
     setTimeout(() => row.classList.remove('sw-right', 'sw-left'), 180);
   };
+  const fingers = new Set();
+  const cancel = () => { clearTimeout(longTimer); if (active && horiz) reset(); active = false; };
   node.addEventListener('pointerdown', (e) => {
+    fingers.add(e.pointerId);
+    if (fingers.size > 1) { cancel(); return; } // due dita = zoom, non scorrimento
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (e.target.closest('.check')) return;
     sx = e.clientX; sy = e.clientY; dx = 0; pid = e.pointerId;
@@ -926,8 +930,8 @@ function attachGestures(row, node, { right, left, long }) {
     reset();
     if (fire) (dx > 0 ? right : left)();
   };
-  node.addEventListener('pointerup', end);
-  node.addEventListener('pointercancel', () => { clearTimeout(longTimer); active = false; if (horiz) reset(); });
+  node.addEventListener('pointerup', (e) => { fingers.delete(e.pointerId); end(); });
+  node.addEventListener('pointercancel', (e) => { fingers.delete(e.pointerId); cancel(); });
   node.addEventListener('contextmenu', (e) => e.preventDefault());
   node.addEventListener('click', (e) => { if (node.dataset.suppress) { e.stopPropagation(); e.preventDefault(); } }, true);
 }

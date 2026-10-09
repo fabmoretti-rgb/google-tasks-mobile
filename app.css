@@ -131,12 +131,13 @@ main {
 .fab {
   position: fixed; z-index: 21; right: 1rem;
   bottom: calc(var(--nav-h) + 1rem + env(safe-area-inset-bottom));
-  display: flex; align-items: center; gap: .5rem;
-  height: 3.75rem; padding: 0 1.4rem 0 1.1rem; border: 0; border-radius: 1.25rem;
+  display: flex; align-items: center; gap: 8px;
+  /* compatto e di misura fissa: non cresce con la dimensione del testo */
+  height: 48px; padding: 0 18px 0 13px; border: 0; border-radius: 16px;
   background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow);
-  font-size: calc(1.05rem * var(--tx)); font-weight: 700;
+  font-size: 16px; font-weight: 700; line-height: 1;
 }
-.fab svg { width: 1.75rem; height: 1.75rem; fill: currentColor; }
+.fab svg { width: 22px; height: 22px; fill: currentColor; }
 .fab:active { transform: scale(.97); }
 
 /* Avvisi */
@@ -198,7 +199,7 @@ main {
 .task {
   position: relative; display: flex; align-items: flex-start; gap: .5rem;
   min-height: 3.75rem; padding: .55rem .25rem .55rem 0;
-  background: var(--bg); touch-action: pan-y; user-select: none;
+  background: var(--bg); touch-action: pan-y pinch-zoom; user-select: none; /* zoom con due dita consentito */
   transition: transform .18s ease;
 }
 .task.dragging { transition: none; }
