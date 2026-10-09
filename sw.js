@@ -1,6 +1,6 @@
 // Service worker: rende l'app installabile e la apre anche senza rete
 // (i dati arrivano da Google; senza rete si vedono le ultime attività salvate).
-const VERSION = 'tasks-gtd-1.0.4';
+const VERSION = 'tasks-gtd-1.0.5';
 const SHELL = [
   './', './index.html', './app.css', './app.js', './config.js', './manifest.webmanifest',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
@@ -8,7 +8,8 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)));
+  // cache: 'reload' = scarica sempre dalla rete, mai dalla memoria temporanea del browser
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))));
 });
 
 self.addEventListener('activate', (e) => {
@@ -25,12 +26,12 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // Google: sempre dalla rete
   // Pagine: prima la rete (per avere sempre l'ultima versione), poi la copia salvata
   if (e.request.mode === 'navigate') {
-    e.respondWith(fetch(e.request).catch(() => caches.match('./index.html')));
+    e.respondWith(fetch(e.request.url, { cache: 'no-cache', credentials: 'same-origin' }).catch(() => caches.match('./index.html')));
     return;
   }
   // File dell'app: copia salvata, aggiornata in background
   e.respondWith(caches.match(e.request).then((hit) => {
-    const net = fetch(e.request).then((res) => {
+    const net = fetch(e.request, { cache: 'no-cache' }).then((res) => {
       if (res.ok) caches.open(VERSION).then((c) => c.put(e.request, res.clone()));
       return res;
     }).catch(() => hit);
