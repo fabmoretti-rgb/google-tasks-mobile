@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.0.6';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -78,6 +78,9 @@ const icon = (name) => el('span', { class: 'ico', html: ICONS[name] });
 const norm = (s) => (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+/* Ordine delle attività: confronto carattere per carattere; le nuove in cima hanno una posizione provvisoria "!…" */
+const cmpPos = (a, b) => { const x = a.position || ''; const y = b.position || ''; return x < y ? -1 : x > y ? 1 : 0; };
+const topPosition = () => `!${String(9e15 - Date.now()).padStart(16, '0')}`;
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 const safeHref = (u) => (/^(https?:|mailto:)/i.test(String(u || '').trim()) ? String(u).trim() : null);
 const URL_RE = /\bhttps?:\/\/[^\s<>"]+/gi;
@@ -318,7 +321,9 @@ function applyResult(op, res) {
     idMap[op.tempId] = res.id;
     for (const arr of store.tasks.values()) {
       const t = arr.find((x) => x.id === op.tempId);
-      if (t) { t.id = res.id; t.position = res.position; t.updated = res.updated; t.links = res.links; }
+      // la posizione provvisoria resta finché l'elenco non viene riallineato (Google rinumera le altre)
+      if (t) { t.id = res.id; if (op.parent) t.position = res.position; t.updated = res.updated; t.links = res.links; }
+      if (!op.parent) scheduleSync(2500);
       arr.forEach((x) => { if (x.parent === op.tempId) x.parent = res.id; });
     }
     if (route.id === op.tempId) { route.id = res.id; history.replaceState(route, ''); }
@@ -458,10 +463,12 @@ function addTask(listId, data, { parent } = {}) {
   listId = realId(listId);
   if (!parent && listId === roleId('waiting')) data = { ...data, notes: withWaitMarker(data.notes) };
   const tempId = `tmp-${uid()}`;
-  const t = { id: tempId, status: 'needsAction', position: '', updated: new Date().toISOString(), ...data, parent: parent || undefined };
+  const t = { id: tempId, status: 'needsAction', position: parent ? '~' : topPosition(), updated: new Date().toISOString(), ...data, parent: parent || undefined };
   if (!store.tasks.has(listId)) store.tasks.set(listId, []);
   store.tasks.get(listId).push(t);
-  enqueue({ kind: 'create', listId, tempId, body: data, parent });
+  // le sottoattività vanno in fondo (dopo l'ultima), come nell'estensione
+  const previous = parent ? childrenOf(listId, parent).filter((c) => !isDone(c) && c.id !== tempId).sort(cmpPos).pop()?.id : undefined;
+  enqueue({ kind: 'create', listId, tempId, body: data, parent, previous });
   saveCache();
   render({ soft: true });
   return t;
@@ -665,7 +672,7 @@ function projectsWithoutNext() {
 function orderActive(tasks) {
   const live = tasks.filter((t) => !isDone(t));
   const ids = new Set(live.map((t) => t.id));
-  const byPos = (a, b) => (a.position || '').localeCompare(b.position || '');
+  const byPos = cmpPos;
   const byDue = (a, b) => (a.due || '￿').localeCompare(b.due || '￿') || byPos(a, b);
   const cmp = prefs.sort === 'due' ? byDue : byPos;
   const kids = new Map();
@@ -1045,7 +1052,7 @@ function viewTask(p) {
     store.lists.map((l) => { const o = el('option', { value: l.id }, listName(l)); if (l.id === listId) o.selected = true; return o; }));
 
   const parent = t.parent && findTask(listId, t.parent);
-  const subs = parent ? [] : childrenOf(listId, t.id).sort((a, b) => Number(isDone(a)) - Number(isDone(b)) || (a.position || '').localeCompare(b.position || ''));
+  const subs = parent ? [] : childrenOf(listId, t.id).sort((a, b) => Number(isDone(a)) - Number(isDone(b)) || cmpPos(a, b));
   const subInput = el('input', { class: 'input', placeholder: 'Aggiungi una sottoattività', enterkeyhint: 'done' });
   const addSub = () => { const v = subInput.value.trim(); if (!v) return; addTask(listId, { title: v }, { parent: t.id }); render(); };
   subInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addSub(); } });
@@ -1119,7 +1126,7 @@ const procSkipped = new Set();
 let procDirty = false;
 function inboxQueue() {
   const id = roleId('inbox');
-  return id ? activeTasks(id).filter((t) => !t.parent).sort((a, b) => (a.position || '').localeCompare(b.position || '')) : [];
+  return id ? activeTasks(id).filter((t) => !t.parent).sort((a, b) => cmpPos(a, b)) : [];
 }
 function viewProcess(p) {
   const inbox = roleList('inbox');
