@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.6';
+const APP_VERSION = '1.0.7';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -49,6 +49,8 @@ const ICONS = {
   info: svg('M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z'),
   rename: svg('M18.41 5.8 17.2 4.59c-.78-.78-2.05-.78-2.83 0l-2.68 2.68L3 15.96V20h4.04l8.74-8.74 2.63-2.63c.79-.78.79-2.05 0-2.83zM6.21 18H5v-1.21l8.66-8.66 1.21 1.21L6.21 18zM11 20l4-4h6v4H11z'),
   sortDate: svg('M3 6h9v2H3zm0 5h7v2H3zm0 5h5v2H3zM17 4h2v12h3l-4 4-4-4h3z'),
+  share: svg('M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z'),
+  subtask: svg('M19 15l-6 6-1.42-1.42L15.17 16H4V4h2v10h9.17l-3.59-3.58L13 9l6 6z'),
   showDone: svg('M14 10H3v2h11v-2zm0-4H3v2h11V6zM3 16h7v-2H3v2zm18.59-4.42L16 17.17l-2.59-2.58L12 16l4 4 7-7-1.41-1.42z'),
   done: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
   circle: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.2" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>',
@@ -846,9 +848,11 @@ function render({ soft = false, top = false } = {}) {
 }
 
 /* ---------- Riga attività (con gesti) ---------- */
-function taskRow(t, listId, { depth = 0, showList = false, q = '', snippet = null } = {}) {
+function taskRow(t, listId, { depth = 0, showList = false, q = '', snippet = null, subTag = false } = {}) {
+  if (t.__ctx) return parentContextRow(t.__ctx, listId);
   const done = isDone(t);
   const meta = [];
+  if (subTag) meta.push(el('span', { class: 'chip sub-chip' }, icon('subtask'), 'Sottoattività'));
   if (t.due) {
     const overdue = !done && parseDue(t.due) < today0();
     meta.push(el('span', { class: `chip due${overdue ? ' overdue' : ''}` }, icon('event'), dueLabel(t.due)));
@@ -890,6 +894,20 @@ function taskRow(t, listId, { depth = 0, showList = false, q = '', snippet = nul
     long: () => openTaskActions(listId, t.id),
   });
   return row;
+}
+
+/** Ricerca: attività principale che non contiene le parole cercate, mostrata sopra le sue sottoattività trovate */
+function parentContextRow(t, listId) {
+  return el('li', { class: 'trow' }, el('div', {
+    class: `task search-parent${isDone(t) ? ' done' : ''}`, role: 'button', tabindex: 0,
+    'aria-label': `${t.title || '(senza titolo)'}, attività di riferimento. Tocca per aprire.`,
+    onclick: () => go({ v: 'task', list: listId, id: t.id }),
+  },
+  el('span', { class: 'check', html: isDone(t) ? ICONS.done : ICONS.circle, 'aria-hidden': 'true' }),
+  el('div', { class: 'task-main' },
+    el('div', { class: 'task-title' }, decorateTitle(t.title || '(senza titolo)')),
+    el('div', { class: 'meta' }, el('span', { class: 'chip parent-chip' }, 'Attività di riferimento'))),
+  el('span', { class: 'task-go', html: ICONS.chevron, 'aria-hidden': 'true' })));
 }
 
 function attachGestures(row, node, { right, left, long }) {
@@ -953,7 +971,7 @@ function group(key, label, rows, { cls = '', opts = {} } = {}) {
       class: `group-head ${cls}${closed ? ' closed' : ''}`, 'aria-expanded': String(!closed),
       onclick: () => { if (closed) collapsed.delete(key); else collapsed.add(key); render(); },
     }, icon('expand'), el('span', { class: 'gname' }, label), el('span', { class: 'gcount' }, rows.length)),
-    closed ? null : el('ul', { class: 'tasks' }, rows.map((r) => taskRow(r.t, r.listId, { depth: r.depth, snippet: r.snippet, ...opts }))),
+    closed ? null : el('ul', { class: `tasks${opts.q ? ' search-results' : ''}` }, rows.map((r) => taskRow(r.ctx ? { __ctx: r.t } : r.t, r.listId, { depth: r.depth, snippet: r.snippet, subTag: !!r.depth && !!opts.q, ...opts }))),
   ];
 }
 
@@ -1226,6 +1244,38 @@ async function processAction(t, kind, data) {
 
 /* ---------- Ricerca ---------- */
 let searchQ = '';
+/** Risultati per elenco, in ordine ad albero: ogni attività seguita dalle sue sottoattività trovate.
+ *  Se l'attività principale non è tra i risultati compare come "attività di riferimento" (ctx). */
+function searchGroups(q, showDone) {
+  const words = norm(q).split(/\s+/).filter(Boolean);
+  const out = [];
+  for (const l of store.lists) {
+    const all = tasksOf(l.id);
+    const shown = all.filter((t) => (showDone || !isDone(t)) && words.every((w) => norm(`${t.title || ''}\n${t.notes || ''}`).includes(w)));
+    if (!shown.length) continue;
+    const byId = new Map(all.map((t) => [t.id, t]));
+    const ids = new Set(shown.map((t) => t.id));
+    const subs = new Map();
+    const anchors = [];
+    for (const t of shown) {
+      const parent = t.parent && byId.get(t.parent);
+      if (!parent) { anchors.push({ t, ctx: false }); continue; }
+      if (!subs.has(parent.id)) subs.set(parent.id, []);
+      subs.get(parent.id).push(t);
+    }
+    for (const pid of subs.keys()) if (!ids.has(pid)) anchors.push({ t: byId.get(pid), ctx: true });
+    const order = (a, b) => Number(isDone(a)) - Number(isDone(b)) || cmpPos(a, b);
+    anchors.sort((a, b) => order(a.t, b.t));
+    const rows = [];
+    for (const { t, ctx } of anchors) {
+      rows.push({ t, depth: 0, ctx });
+      for (const c of (subs.get(t.id) || []).sort(order)) rows.push({ t: c, depth: 1 });
+    }
+    out.push({ l, shown, rows });
+  }
+  return out;
+}
+
 function rememberSearch(q) {
   q = q.trim();
   if (q.length < 2) return;
@@ -1264,20 +1314,21 @@ function viewSearch(p) {
     const words = norm(q).split(/\s+/).filter(Boolean);
     const parts = [];
     let total = 0;
-    for (const l of store.lists) {
-      const found = tasksOf(l.id).filter((t) => (prefs.searchShowDone || !isDone(t)) && words.every((w) => norm(`${t.title || ''}\n${t.notes || ''}`).includes(w)))
-        .sort((a, b) => Number(isDone(a)) - Number(isDone(b)));
-      if (!found.length) continue;
-      total += found.length;
-      parts.push(...group(`s-${l.id}`, listName(l), found.map((t) => {
+    for (const { l, shown, rows } of searchGroups(q, prefs.searchShowDone)) {
+      total += shown.length;
+      parts.push(...group(`s-${l.id}`, listName(l), rows.map(({ t, depth, ctx }) => {
         let snippet = null;
         const nn = norm(t.notes);
-        const w = words.find((x) => nn.includes(x));
+        const w = !ctx && words.find((x) => nn.includes(x));
         if (w) { const i = nn.indexOf(w); snippet = (i > 30 ? '…' : '') + t.notes.slice(Math.max(0, i - 30), i + 90).replace(/\s+/g, ' '); }
-        return { t, listId: l.id, snippet };
+        return { t, listId: l.id, snippet, depth, ctx };
       }), { opts: { q } }));
     }
-    results.replaceChildren(el('p', { class: 'sub' }, total ? plural(total, 'risultato', 'risultati') : 'Nessuna attività trovata.'), ...parts);
+    results.replaceChildren(
+      el('div', { class: 'results-head' },
+        el('p', { class: 'sub' }, total ? plural(total, 'risultato', 'risultati') : 'Nessuna attività trovata.'),
+        total ? el('button', { class: 'btn', onclick: () => openExport({ q }) }, icon('share'), 'Esporta / copia') : null),
+      ...parts);
   }
   renderResults();
   if (!searchQ) requestAnimationFrame(() => input.focus());
@@ -1292,7 +1343,8 @@ function viewMore(p) {
     el('ul', { class: 'menu-list' },
       item('review', 'Revisione settimanale', ago == null ? 'Mai fatta' : ago === 0 ? 'Fatta oggi' : `Ultima ${ago} giorni fa`, () => go({ v: 'review' })),
       item('at', 'Contesti', ctxN ? plural(ctxN, 'contesto in uso', 'contesti in uso') : 'Dove o con cosa fare un’azione', () => go({ v: 'contexts' })),
-      item('hourglass', 'Deleghe in corso', plural(delegatedRows().length, 'attività', 'attività'), () => go({ v: 'delegated' }))),
+      item('hourglass', 'Deleghe in corso', plural(delegatedRows().length, 'attività', 'attività'), () => go({ v: 'delegated' })),
+      item('share', 'Esporta / copia', 'Tutte le attività come testo o Markdown', () => openExport())),
     el('ul', { class: 'menu-list' },
       item('settings', 'Impostazioni', 'Testo, tema, leggibilità, GTD, account', () => go({ v: 'settings' })),
       item('info', 'Guida rapida', 'Gesti, pulsanti e consigli', () => go({ v: 'help' }))),
@@ -1595,6 +1647,7 @@ function openListMenu() {
   actionsSheet(listName(list), [
     { icon: 'showDone', label: prefs.showCompleted ? 'Nascondi le completate' : 'Mostra le completate', fn: () => { prefs.showCompleted = !prefs.showCompleted; savePrefs(); render(); } },
     { icon: 'sortDate', label: prefs.sort === 'due' ? 'Ordine personalizzato' : 'Ordina per scadenza', fn: () => { prefs.sort = prefs.sort === 'due' ? 'manual' : 'due'; savePrefs(); render(); } },
+    { icon: 'share', label: 'Esporta / copia / condividi…', fn: () => openExport({ listId: list.id }) },
     { icon: 'rename', label: 'Rinomina elenco', fn: async () => { const v = await askText('Rinomina elenco', list.title); if (v && v !== list.title) { list.title = v; enqueue({ kind: 'list-patch', listId: list.id, body: { title: v } }); saveCache(); render(); } } },
     doneN ? { icon: 'delete', label: `Elimina le completate (${doneN})`, fn: async () => {
       if (!(await confirmBox('Eliminare le completate?', `Verranno eliminate ${plural(doneN, 'attività completata', 'attività completate')}.`))) return;
@@ -1607,6 +1660,101 @@ function openListMenu() {
       store.lists = store.lists.filter((l) => l !== list); store.tasks.delete(list.id); saveCache(); back();
     } },
   ]);
+}
+
+/* ---------- Esporta / copia / condividi ---------- */
+function exportRowsFor(scope, { q, listId, completed }) {
+  const rows = [];
+  if (scope === 'search') {
+    for (const { l, rows: rs } of searchGroups(q, completed)) for (const { t, depth, ctx } of rs) rows.push({ list: l, t, depth, ctx });
+    return rows;
+  }
+  for (const l of scope === 'all' ? store.lists : [findList(listId)].filter(Boolean)) {
+    const tasks = tasksOf(l.id);
+    for (const { t, depth } of orderActive(tasks)) rows.push({ list: l, t, depth });
+    if (completed) tasks.filter(isDone).sort((a, b) => (b.completed || '').localeCompare(a.completed || '')).forEach((t) => rows.push({ list: l, t, depth: 0 }));
+  }
+  return rows;
+}
+
+const exportDate = (iso) => parseDue(iso).toLocaleDateString('it-IT');
+
+function exportPlain(rows, notes) {
+  const out = [];
+  let cur;
+  for (const { list, t, depth, ctx } of rows) {
+    if (list !== cur) { if (cur) out.push(''); out.push(list.title.toUpperCase(), '='.repeat(Math.min(list.title.length, 40))); cur = list; }
+    const pad = '    '.repeat(depth);
+    out.push(`${pad}${isDone(t) ? '[x]' : '[ ]'} ${t.title || '(senza titolo)'}${t.due ? `  (scadenza ${exportDate(t.due)})` : ''}${ctx ? '  (attività di riferimento)' : ''}`);
+    if (ctx || !notes) continue;
+    for (const line of (t.notes || '').split('\n')) if (line.trim()) out.push(`${pad}      ${line.trim()}`);
+    for (const l of t.links || []) out.push(`${pad}      ${l.description || ''} ${l.link}`.trimEnd());
+  }
+  return out.join('\n') || 'Nessuna attività.';
+}
+
+function exportMarkdown(rows, notes, title) {
+  const md = (v) => String(v ?? '').replace(/([\\`*_[\]<>#|])/g, '\\$1');
+  const out = [`# ${md(title)}`, '', `_Esportato il ${new Date().toLocaleString('it-IT')}_`];
+  let cur;
+  for (const { list, t, depth, ctx } of rows) {
+    if (list !== cur) { out.push('', `## ${md(list.title)}`, ''); cur = list; }
+    const pad = '  '.repeat(depth);
+    out.push(`${pad}- [${isDone(t) ? 'x' : ' '}] ${md(t.title || '(senza titolo)')}${t.due ? ` — scadenza ${exportDate(t.due)}` : ''}${ctx ? ' _(attività di riferimento)_' : ''}`);
+    if (ctx || !notes) continue;
+    for (const line of (t.notes || '').split('\n')) if (line.trim()) out.push(`${pad}  ${md(line.trim())}  `);
+    for (const l of t.links || []) out.push(`${pad}  [${md(l.description || l.link)}](${l.link})  `);
+  }
+  if (!rows.length) out.push('', '_Nessuna attività._');
+  return out.join('\n') + '\n';
+}
+
+function openExport({ q = '', listId = null } = {}) {
+  const st = { scope: q ? 'search' : listId ? 'list' : 'all', fmt: 'txt', completed: !!(q && prefs.searchShowDone), notes: true };
+  const name = () => (st.scope === 'search' ? `Ricerca “${q}”` : st.scope === 'list' ? listName(findList(listId)) : 'Google Tasks');
+  sheet((s) => {
+    const box = el('textarea', { class: 'textarea export-view', readonly: true, spellcheck: 'false', 'aria-label': 'Testo da copiare' });
+    const chips = el('div');
+    const text = () => {
+      const rows = exportRowsFor(st.scope, { q, listId, completed: st.completed });
+      return st.fmt === 'md' ? exportMarkdown(rows, st.notes, name()) : exportPlain(rows, st.notes);
+    };
+    const chip = (label, on, fn) => el('button', { class: `pchip${on ? ' on' : ''}`, 'aria-pressed': String(on), onclick: () => { fn(); refresh(); } }, label);
+    const refresh = () => {
+      chips.replaceChildren(
+        el('div', { class: 'chips' },
+          q ? chip('Risultati ricerca', st.scope === 'search', () => { st.scope = 'search'; }) : null,
+          listId ? chip('Questo elenco', st.scope === 'list', () => { st.scope = 'list'; }) : null,
+          chip('Tutti gli elenchi', st.scope === 'all', () => { st.scope = 'all'; })),
+        el('div', { class: 'chips' },
+          chip('Testo semplice', st.fmt === 'txt', () => { st.fmt = 'txt'; }),
+          chip('Markdown', st.fmt === 'md', () => { st.fmt = 'md'; })),
+        el('div', { class: 'chips' },
+          chip('Con le completate', st.completed, () => { st.completed = !st.completed; }),
+          chip('Con note e link', st.notes, () => { st.notes = !st.notes; })));
+      box.value = text();
+      box.scrollTop = 0;
+    };
+    const copy = async () => {
+      try { await navigator.clipboard.writeText(box.value); toast('Copiato: ora puoi incollarlo dove vuoi'); } catch { box.focus(); box.select(); toast('Seleziona il testo e copialo a mano', { error: true }); }
+    };
+    const share = async () => {
+      try { await navigator.share({ title: name(), text: box.value }); } catch (e) { if (e?.name !== 'AbortError') copy(); }
+    };
+    const download = () => {
+      const ext = st.fmt === 'md' ? 'md' : 'txt';
+      const url = URL.createObjectURL(new Blob([box.value], { type: st.fmt === 'md' ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8' }));
+      const a = el('a', { href: url, download: `${name().replace(/[\\/:*?"<>|“”]+/g, '_')} ${new Date().toISOString().slice(0, 10)}.${ext}` });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    };
+    s.append(el('h2', {}, 'Esporta / copia'), chips, box,
+      el('div', { class: 'sheet-footer export-footer' },
+        el('button', { class: 'btn primary', onclick: copy }, 'Copia tutto'),
+        navigator.share ? el('button', { class: 'btn', onclick: share }, icon('share'), 'Condividi') : null,
+        el('button', { class: 'btn', onclick: download }, 'Scarica')));
+    refresh();
+  });
 }
 
 async function newList() {

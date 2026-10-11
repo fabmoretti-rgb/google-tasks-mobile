@@ -449,3 +449,19 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
 
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .k-reading { --k: #f48fb1; } }
 :root[data-theme="dark"] .k-reading { --k: #f48fb1; }
+
+/* Ricerca: sottoattività ben distinguibili, attività di riferimento in grigio */
+.search-results .task.sub { background: linear-gradient(90deg, transparent 1.2rem, var(--accent-soft) 1.2rem, transparent 85%); }
+.search-results .task.sub::before { border-left: 3px solid var(--accent); opacity: .6; }
+.search-results .task.sub .task-title { font-size: .95em; }
+.chip.sub-chip { padding: .05rem .55rem; border-radius: 1rem; background: var(--accent-soft); color: var(--accent); font-weight: 600; font-size: .85em; }
+.chip.sub-chip .ico svg { width: 1rem; height: 1rem; }
+.task.search-parent { min-height: 0; padding-top: .5rem; padding-bottom: .5rem; }
+.task.search-parent .task-title { color: var(--muted); font-size: .9em; }
+.task.search-parent .check { color: var(--line); }
+.chip.parent-chip { padding: .05rem .55rem; border-radius: 1rem; border: 1px dashed currentColor; font-size: .82em; }
+.results-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+
+/* Esporta / copia */
+.export-view { min-height: 32vh; max-height: 45vh; font-family: Consolas, "Roboto Mono", monospace; font-size: .85em; line-height: 1.4; white-space: pre-wrap; overflow: auto; margin-top: .5rem; }
+.export-footer { flex-wrap: wrap; }
