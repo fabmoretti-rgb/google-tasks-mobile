@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.14';
+const APP_VERSION = '1.0.15';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -861,6 +861,7 @@ function render({ soft = false, top = false } = {}) {
   if (soft && v.v === 'inbox' && procDirty) return;
   const scroll = main.scrollTop;
   const page = el('div', { class: 'page' });
+  if (!def.gate) page.append(el('div', { class: 'land-title', 'aria-hidden': 'true' }, def.title())); // visibile solo in orizzontale
   def.render(page);
   main.replaceChildren(page);
   main.scrollTop = top ? 0 : scroll;

@@ -492,19 +492,37 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
 .chip.sub-count { padding: .05rem .55rem; border-radius: 1rem; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .chip.sub-count .ico svg { width: 1rem; height: 1rem; }
 
-/* Telefono in orizzontale: barre più basse, così resta spazio per le attività */
+/* Titolo dentro la pagina: serve solo in orizzontale, quando la barra gialla diventa una colonna */
+.land-title { display: none; }
+
+/* Telefono in orizzontale: barra gialla e pulsanti in una colonna stretta a sinistra,
+   così il contenuto usa tutta l'altezza dello schermo */
 @media (orientation: landscape) and (max-height: 540px) {
-  :root { --nav-h: 44px; }
-  .appbar { min-height: calc(40px + env(safe-area-inset-top)); }
-  .appbar h1 { font-size: calc(1.05rem * var(--tx)); }
-  .appbar .logo { width: 24px; height: 24px; }
-  .bar-btn { width: 38px; height: 38px; }
+  :root { --nav-h: 0px; --rail: calc(76px + env(safe-area-inset-left)); }
+  .app { padding-left: var(--rail); }
+  .appbar {
+    position: fixed; z-index: 22; left: 0; top: 0; width: var(--rail);
+    flex-direction: column; align-items: center; gap: 2px; min-height: 0;
+    padding: calc(env(safe-area-inset-top) + 4px) 0 6px env(safe-area-inset-left);
+    border-bottom-right-radius: 14px;
+  }
+  .appbar h1 { display: none; }
+  .appbar .logo { width: 26px; height: 26px; margin: 4px 0; }
+  #barActions { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .bar-btn { width: min(38px, 9.5vh); height: min(38px, 9.5vh); }
   .bar-btn svg { width: 22px; height: 22px; }
-  .bottomnav button { gap: 0; padding: .1rem; font-size: .68rem; }
-  .bottomnav .pill-ico { height: 24px; width: min(3rem, 92%); }
+  .acct-btn .avatar { width: 28px; height: 28px; font-size: 14px; }
+  .bottomnav {
+    top: auto; right: auto; bottom: 0; width: var(--rail); height: auto;
+    display: flex; flex-direction: column;
+    padding: 2px 0 calc(env(safe-area-inset-bottom) + 2px) env(safe-area-inset-left);
+    border-top: 0; border-right: 1px solid var(--line); border-top-right-radius: 14px;
+  }
+  .bottomnav button { height: min(46px, 11vh); gap: 0; padding: 0 2px; font-size: .66rem; }
+  .bottomnav .pill-ico { height: 24px; width: 46px; }
   .bottomnav .pill-ico svg { width: 20px; height: 20px; }
-  .bottomnav .badge { top: 0; min-width: 1.1rem; height: 1.1rem; line-height: 1.1rem; font-size: .65rem; }
-  main { padding-bottom: calc(var(--nav-h) + 4rem + env(safe-area-inset-bottom)); }
-  .fab { bottom: calc(var(--nav-h) + .6rem + env(safe-area-inset-bottom)); height: 40px; font-size: 16px; }
-  .acct-btn .avatar { width: 30px; height: 30px; font-size: 15px; }
+  .bottomnav .badge { top: 0; left: calc(50% + .5rem); min-width: 1.1rem; height: 1.1rem; line-height: 1.1rem; font-size: .65rem; }
+  main { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+  .fab { bottom: calc(.8rem + env(safe-area-inset-bottom)); height: 40px; font-size: 16px; }
+  .land-title { display: block; margin: .7rem 0 .2rem; font-size: calc(1.2rem * var(--tx)); font-weight: 700; line-height: 1.2; }
 }
