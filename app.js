@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.11';
+const APP_VERSION = '1.0.13';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -100,6 +100,7 @@ const prefs = Object.assign({
   theme: 'auto', scale: 1, font: 'system', hiRead: false, niceCase: false, home: 'today',
   sort: 'manual', showCompleted: true, searchShowDone: false,
   roles: {}, waitDays: 7, contexts: DEFAULT_CONTEXTS, lastReview: null, reviewChecks: {}, recent: [],
+  titleLines: '3', foldOpen: [], foldClosed: [],
 }, LS.get('prefs', {}));
 const savePrefs = () => LS.set('prefs', prefs);
 
@@ -581,6 +582,19 @@ function roleList(role) {
   return store.lists.find((l) => GTD_ROLE_RE[role].test(norm(l.title))) || null;
 }
 const roleId = (role) => roleList(role)?.id || null;
+/* Sottoattività richiudibili: aperte di partenza, chiuse di partenza nell'elenco Progetti */
+function isFolded(listId, id) {
+  if (prefs.foldClosed.includes(id)) return true;
+  return roleOf(realId(listId)) === 'projects' && !prefs.foldOpen.includes(id);
+}
+function setFolded(listId, ids, closed) {
+  const set = (arr, add, id) => { const i = arr.indexOf(id); if (add && i < 0) arr.push(id); if (!add && i >= 0) arr.splice(i, 1); };
+  for (const id of ids) { set(prefs.foldClosed, closed, id); set(prefs.foldOpen, !closed, id); }
+  prefs.foldClosed = prefs.foldClosed.slice(-500); prefs.foldOpen = prefs.foldOpen.slice(-500);
+  savePrefs();
+  render();
+}
+
 function roleOf(listId) { return Object.keys(ROLE_LABELS).find((r) => roleId(r) === listId) || null; }
 
 const parseDue = (due) => { const [y, m, d] = due.slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); };
@@ -850,6 +864,18 @@ function render({ soft = false, top = false } = {}) {
   def.render(page);
   main.replaceChildren(page);
   main.scrollTop = top ? 0 : scroll;
+  requestAnimationFrame(() => markClampedTitles(page));
+}
+
+function markClampedTitles(root) {
+  for (const tt of root.querySelectorAll('.task-title.clamp')) {
+    if (tt.scrollHeight <= tt.clientHeight + 2 || !tt.dataset.ctx) continue;
+    const main = tt.parentElement;
+    let meta = main.querySelector('.meta');
+    if (!meta) { meta = el('div', { class: 'meta' }); tt.after(meta); }
+    if (meta.querySelector('.ctx-chip')) continue;
+    meta.prepend(...tt.dataset.ctx.split(' ').map((c) => el('span', { class: 'chip ctx-chip' }, c)));
+  }
 }
 
 /* ---------- Riga attività (con gesti) ---------- */
@@ -880,10 +906,14 @@ function goNeighbor(dir) {
   go({ v: 'task', list: to.list, id: to.id, slide: dir }, { replace: true });
 }
 
-function taskRow(t, listId, { depth = 0, showList = false, q = '', snippet = null, subTag = false } = {}) {
+function taskRow(t, listId, { depth = 0, showList = false, q = '', snippet = null, subTag = false, fold = null } = {}) {
   if (t.__ctx) return parentContextRow(t.__ctx, listId);
   const done = isDone(t);
   const meta = [];
+  if (fold?.closed) {
+    meta.push(el('span', { class: 'chip sub-count' }, icon('subtask'), fold.count === 1 ? '1 sottoattività' : `${fold.count} sottoattività`));
+    if (fold.overdue) meta.push(el('span', { class: 'chip overdue' }, icon('event'), fold.overdue === 1 ? '1 scaduta' : `${fold.overdue} scadute`));
+  }
   if (subTag) meta.push(el('span', { class: 'chip sub-chip' }, icon('subtask'), 'Sottoattività'));
   if (t.due) {
     const overdue = !done && parseDue(t.due) < today0();
@@ -910,10 +940,18 @@ function taskRow(t, listId, { depth = 0, showList = false, q = '', snippet = nul
     onclick: (e) => { e.stopPropagation(); toggleDone(listId, t.id); },
   }),
   el('div', { class: 'task-main' },
-    el('div', { class: 'task-title' }, q ? highlight(title, q) : decorateTitle(title),
+    el('div', {
+      class: `task-title${prefs.titleLines === 'full' || q ? '' : ' clamp'}`,
+      dataset: { ctx: [...title.matchAll(CTX_RE)].map((m) => m[2]).join(' ') },
+    }, q ? highlight(title, q) : decorateTitle(title),
       t.notes && !WAIT_RE.test(t.notes) ? el('span', { class: 'notes-mark', html: ICONS.notes, title: 'Ha delle note' }) : null),
     meta.length ? el('div', { class: 'meta' }, meta) : null,
     snippet ? el('div', { class: 'meta' }, highlight(snippet, q)) : null),
+  fold ? el('button', {
+    class: `fold${fold.closed ? ' closed' : ''}`, 'aria-expanded': String(!fold.closed), html: ICONS.expand,
+    'aria-label': fold.closed ? `Mostra le ${fold.count} sottoattività` : 'Nascondi le sottoattività',
+    onclick: (e) => { e.stopPropagation(); fold.toggle(); },
+  }) : null,
   el('span', { class: 'task-go', html: ICONS.chevron, 'aria-hidden': 'true' }));
 
   const row = el('li', { class: 'trow' },
@@ -947,7 +985,7 @@ function parentContextRow(t, listId) {
 /** Scorrimento orizzontale deciso (non un tocco, non uno scroll verticale) → attività vicina.
  *  Eventi "touch": il browser li consegna fino alla fine anche se nel frattempo scorre la pagina
  *  o il dito parte sopra un campo di testo (con i "pointer" il gesto veniva annullato). */
-function attachPagerSwipe(area) {
+function attachPagerSwipe(area, onSwipe = goNeighbor) {
   let sx = 0; let sy = 0; let st = 0; let on = false; let horiz = null;
   const reset = () => { area.style.transition = 'transform .15s'; area.style.transform = ''; };
   area.addEventListener('touchstart', (e) => {
@@ -972,7 +1010,7 @@ function attachPagerSwipe(area) {
     const p = e.changedTouches[0];
     const dx = p.clientX - sx; const dy = p.clientY - sy;
     if (!horiz || Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.7 || Date.now() - st > 900) return;
-    goNeighbor(dx < 0 ? 1 : -1);
+    onSwipe(dx < 0 ? 1 : -1);
   }, { passive: true });
 }
 
@@ -991,7 +1029,7 @@ function attachGestures(row, node, { right, left, long }) {
     fingers.add(e.pointerId);
     if (fingers.size > 1) { cancel(); return; } // due dita = zoom, non scorrimento
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    if (e.target.closest('.check')) return;
+    if (e.target.closest('.check, .fold')) return;
     sx = e.clientX; sy = e.clientY; dx = 0; pid = e.pointerId;
     active = true; decided = false; horiz = false;
     longTimer = setTimeout(() => {
@@ -1100,7 +1138,18 @@ function viewList(p) {
   const role = roleOf(list.id);
   if (role) p.append(el('p', { class: 'sub', style: 'margin-top:1rem' }, `Ruolo GTD: ${ROLE_LABELS[role]}${prefs.sort === 'due' ? ' · ordinate per scadenza' : ''}`));
   if (!active.length) p.append(el('div', { class: 'empty' }, icon('done'), el('p', {}, 'Nessuna attività da fare.')));
-  p.append(el('ul', { class: 'tasks' }, active.map(({ t, depth }) => taskRow(t, list.id, { depth }))));
+  const kids = new Map();
+  for (const { t, depth } of active) if (depth) { if (!kids.has(t.parent)) kids.set(t.parent, []); kids.get(t.parent).push(t); }
+  const t0 = today0();
+  const shown = active.filter(({ t, depth }) => !(depth && isFolded(list.id, t.parent)));
+  p.append(el('ul', { class: 'tasks' }, shown.map(({ t, depth }) => {
+    const ks = !depth && kids.get(t.id);
+    const fold = ks ? {
+      count: ks.length, overdue: ks.filter((k) => k.due && parseDue(k.due) < t0).length,
+      closed: isFolded(list.id, t.id), toggle: () => setFolded(list.id, [t.id], !isFolded(list.id, t.id)),
+    } : null;
+    return taskRow(t, list.id, { depth, fold });
+  })));
   if (prefs.showCompleted && done.length) {
     p.append(el('button', {
       class: `completed-toggle${state.completedOpen ? '' : ' closed'}`, 'aria-expanded': String(state.completedOpen),
@@ -1147,18 +1196,13 @@ function viewTask(p) {
   p.classList.add('detail');
   // precedente / successiva: frecce in alto e scorrimento orizzontale del dito
   let nb = { seq: [], i: -1 };
-  let navErr = '';
-  try { nb = navNeighbors(listId, t.id); } catch (e) { navErr = e?.message || String(e); }
+  try { nb = navNeighbors(listId, t.id); } catch { /* senza vicine: niente frecce */ }
   if (nb.seq.length > 1 && nb.i >= 0) {
     p.append(el('div', { class: 'pager' },
       el('button', { class: 'bar-btn pg-prev', disabled: !nb.prev, 'aria-label': 'Attività precedente', html: ICONS.chevron, onclick: () => goNeighbor(-1) }),
       el('span', { class: 'pg-pos' }, `${nb.i + 1} di ${nb.seq.length}`),
       el('button', { class: 'bar-btn', disabled: !nb.next, 'aria-label': 'Attività successiva', html: ICONS.chevron, onclick: () => goNeighbor(1) })));
     attachPagerSwipe(p);
-  } else {
-    // diagnostica temporanea: perché non ci sono attività vicine
-    p.append(el('p', { class: 'footnote nav-diag' },
-      `↔ non disponibile · aperte ${navSeq.length} · sequenza ${nb.seq.length} · posizione ${nb.i} · attive ${activeTasks(listId).length}${navErr ? ` · errore: ${navErr}` : ''}`));
   }
   if (route.slide) { p.classList.add(route.slide > 0 ? 'slide-in-next' : 'slide-in-prev'); delete route.slide; }
   p.append(
@@ -1223,6 +1267,7 @@ function viewDelegated(p) {
 
 /* ---------- Elabora INBOX ---------- */
 const procSkipped = new Set();
+const procSkipStack = []; // ordine dei salti, per tornare indietro scorrendo a destra
 let procDirty = false;
 function inboxQueue() {
   const id = roleId('inbox');
@@ -1238,7 +1283,7 @@ function viewProcess(p) {
     p.append(el('div', { class: 'empty' }, icon('inbox'),
       el('h2', {}, all.length ? 'Hai saltato le voci rimaste' : 'INBOX vuota'),
       el('p', {}, all.length ? 'Riprendile quando vuoi.' : 'Tutto chiarito e organizzato. Ottimo lavoro!'),
-      all.length ? el('button', { class: 'btn primary', onclick: () => { procSkipped.clear(); render(); } }, `Riprendi le ${all.length} saltate`) : null,
+      all.length ? el('button', { class: 'btn primary', onclick: () => { procSkipped.clear(); procSkipStack.length = 0; render(); } }, `Riprendi le ${all.length} saltate`) : null,
       el('button', { class: 'btn', onclick: () => go({ v: 'list', id: inbox.id }) }, 'Apri la INBOX')));
     return;
   }
@@ -1274,8 +1319,29 @@ function viewProcess(p) {
   }, el('b', {}, label), el('span', { class: 'hint' }, el('span', { class: 'ico', html: ICONS[ico] }), el('span', {}, hint)));
   const reading = roleList('reading');
 
+  p.classList.add('swipe-area');
+  // scorrimento: a sinistra salta (tenendo le modifiche scritte), a destra riprende l'ultima saltata
+  attachPagerSwipe(p, (dir) => {
+    if (dir > 0) {
+      if (procDirty) { const d = read(); const patch = {};
+        if (d.title && d.title !== t.title) patch.title = d.title;
+        if (d.notes !== (t.notes || '')) patch.notes = d.notes;
+        if ((t.due || '').slice(0, 10) !== (d.due || '').slice(0, 10)) patch.due = d.due;
+        if (Object.keys(patch).length) patchTask(inbox.id, t.id, patch); }
+      if (queue.length < 2 && !procSkipStack.length) { toast('È l’unica voce da elaborare'); return; }
+      processAction(t, 'skip', null, 1);
+    } else {
+      const back = procSkipStack.pop();
+      if (!back) { toast('Nessuna voce saltata prima di questa'); return; }
+      procSkipped.delete(back);
+      procDirty = false;
+      route.slide = -1;
+      render({ top: true });
+    }
+  });
+  if (route.slide) { p.classList.add(route.slide > 0 ? 'slide-in-next' : 'slide-in-prev'); delete route.slide; }
   p.append(el('div', { class: 'proc-card' },
-    el('div', { class: 'proc-pos' }, `Voce ${all.indexOf(t) + 1} di ${all.length}`),
+    el('div', { class: 'proc-pos' }, `Voce ${all.indexOf(t) + 1} di ${all.length}`, el('span', { class: 'proc-swipe' }, ' · scorri ← → per saltare')),
     el('label', { class: 'field' }, el('span', { class: 'lab' }, 'Titolo'), title),
     el('label', { class: 'field' }, el('span', { class: 'lab' }, 'Dettagli'), notes),
     el('div', { class: 'field' }, el('span', { class: 'lab' }, 'Contesto'), ctxRow),
@@ -1294,10 +1360,10 @@ function viewProcess(p) {
   requestAnimationFrame(() => { autosize(title); autosize(notes); });
 }
 
-async function processAction(t, kind, data) {
+async function processAction(t, kind, data, slide = 0) {
   const inboxId = roleId('inbox');
   procDirty = false;
-  if (kind === 'skip') { procSkipped.add(t.id); render({ top: true }); return; }
+  if (kind === 'skip') { procSkipped.add(t.id); procSkipStack.push(t.id); if (slide) route.slide = slide; render({ top: true }); return; }
   if (kind === 'delete') { removeTask(inboxId, t.id); render({ top: true }); return; }
   const patch = {};
   if (data.title && data.title !== t.title) patch.title = data.title;
@@ -1544,6 +1610,7 @@ function viewSettings(p) {
       el('div', { class: 'field' }, el('span', { class: 'lab' }, 'Carattere'), chipset([['system', 'Di sistema (Roboto)'], ['atkinson', 'Atkinson Hyperlegible']], prefs.font, (v) => setPref('font', v))),
       sw('Alta leggibilità', 'Carattere Atkinson, interlinea ampia, testi secondari più scuri, nomi degli elenchi con l’iniziale maiuscola', 'hiRead'),
       sw('Nomi degli elenchi con l’iniziale maiuscola', '“Prossime azioni” invece di “PROSSIME AZIONI”', 'niceCase'),
+      el('div', { class: 'field' }, el('span', { class: 'lab' }, 'Titoli lunghi negli elenchi'), chipset([['3', 'Al massimo 3 righe'], ['full', 'Sempre completi']], prefs.titleLines, (v) => setPref('titleLines', v))),
       el('div', { class: 'field' }, el('span', { class: 'lab' }, 'Schermata iniziale'), chipset([['today', 'Oggi'], ['lists', 'Elenchi'], ['inbox', 'INBOX']], prefs.home, (v) => setPref('home', v)))),
     el('section', { class: 'section' }, el('h3', {}, 'GTD'),
       el('p', { class: 'sub' }, 'Quale elenco svolge ogni ruolo. “Automatico” lo riconosce dal nome.'),
@@ -1588,7 +1655,8 @@ function viewHelp(p) {
   p.append(
     el('h2', { class: 'h2' }, 'Gesti sulle attività'),
     el('ul', {}, row('Tocca', 'apri i dettagli'), row('Tocca il cerchio', 'completa (con Annulla)'), row('Scorri verso destra', 'completa'),
-      row('Scorri verso sinistra o tieni premuto', 'menu azioni: scadenza, sposta, delega, elimina'), row('Tasto Indietro', 'torna alla schermata precedente')),
+      row('Scorri verso sinistra o tieni premuto', 'menu azioni: scadenza, sposta, delega, elimina'), row('Tasto Indietro', 'torna alla schermata precedente'),
+      row('Freccetta a destra di un’attività', 'apri / chiudi le sue sottoattività (nell’elenco Progetti partono chiuse; da chiuse vedi quante sono e quante scadute)')),
     el('h2', { class: 'h2' }, 'Nel dettaglio di un’attività'),
     el('ul', {}, row('Scorri a sinistra / a destra', 'attività successiva / precedente, nell’ordine della schermata da cui l’hai aperta (anche frecce ‹ › in alto)'), row('Esporta / copia', 'dal menu ⋮ di un elenco, dai risultati della ricerca o da Altro')),
     el('h2', { class: 'h2' }, 'In basso'),
@@ -1728,7 +1796,10 @@ function openListMenu() {
   const list = findList(route.id);
   if (!list) return;
   const doneN = tasksOf(list.id).filter(isDone).length;
+  const parents = [...new Set(activeTasks(list.id).filter((t) => t.parent).map((t) => t.parent))];
+  const anyOpen = parents.some((id) => !isFolded(list.id, id));
   actionsSheet(listName(list), [
+    parents.length ? { icon: 'expand', label: anyOpen ? 'Chiudi tutte le sottoattività' : 'Apri tutte le sottoattività', fn: () => setFolded(list.id, parents, anyOpen) } : null,
     { icon: 'showDone', label: prefs.showCompleted ? 'Nascondi le completate' : 'Mostra le completate', fn: () => { prefs.showCompleted = !prefs.showCompleted; savePrefs(); render(); } },
     { icon: 'sortDate', label: prefs.sort === 'due' ? 'Ordine personalizzato' : 'Ordina per scadenza', fn: () => { prefs.sort = prefs.sort === 'due' ? 'manual' : 'due'; savePrefs(); render(); } },
     { icon: 'share', label: 'Esporta / copia / condividi…', fn: () => openExport({ listId: list.id }) },

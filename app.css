@@ -478,4 +478,19 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
 @media (prefers-reduced-motion: reduce) { .slide-in-next, .slide-in-prev { animation: none; } }
 
 /* Nel dettaglio lo scorrimento orizzontale serve a cambiare attività, anche sopra i campi */
-.detail, .detail * { touch-action: pan-y pinch-zoom; }
+.detail, .detail *, .swipe-area, .swipe-area * { touch-action: pan-y pinch-zoom; }
+.proc-swipe { color: var(--muted); font-weight: 400; }
+
+/* Titoli al massimo 3 righe (il testo completo è nel dettaglio) */
+.task-title.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.chip.ctx-chip { color: var(--accent); font-weight: 600; }
+/* Sottoattività: freccetta grande per aprire / chiudere */
+.fold {
+  flex: none; align-self: center; display: grid; place-items: center;
+  width: 2.75rem; height: 2.75rem; padding: 0; border: 0; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+}
+.fold svg { width: 1.6rem; height: 1.6rem; fill: currentColor; transition: transform .15s; transform: rotate(180deg); } /* aperta: freccia in su */
+.fold.closed svg { transform: none; } /* chiusa: freccia in giù = apri */
+.chip.sub-count { padding: .05rem .55rem; border-radius: 1rem; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.chip.sub-count .ico svg { width: 1rem; height: 1rem; }
