@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.10';
+const APP_VERSION = '1.0.11';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -864,7 +864,7 @@ function navNeighbors(listId, id) {
   const lid = realId(listId); const tid = realId(id);
   let seq = navSeq.filter((x) => findTask(x.list, x.id));
   let i = seq.findIndex((x) => realId(x.list) === lid && realId(x.id) === tid);
-  if (i < 0) { // aperta da un link: uso l'ordine dell'elenco
+  if (i < 0 || seq.length < 2) { // aperta da un link o sequenza inutile: uso l'ordine dell'elenco
     const t = findTask(lid, tid);
     seq = t && isDone(t)
       ? tasksOf(lid).filter(isDone).sort((a, b) => (b.completed || '').localeCompare(a.completed || '')).map((x) => ({ list: lid, id: x.id }))
@@ -1146,13 +1146,19 @@ function viewTask(p) {
 
   p.classList.add('detail');
   // precedente / successiva: frecce in alto e scorrimento orizzontale del dito
-  const nb = navNeighbors(listId, t.id);
+  let nb = { seq: [], i: -1 };
+  let navErr = '';
+  try { nb = navNeighbors(listId, t.id); } catch (e) { navErr = e?.message || String(e); }
   if (nb.seq.length > 1 && nb.i >= 0) {
     p.append(el('div', { class: 'pager' },
       el('button', { class: 'bar-btn pg-prev', disabled: !nb.prev, 'aria-label': 'Attività precedente', html: ICONS.chevron, onclick: () => goNeighbor(-1) }),
       el('span', { class: 'pg-pos' }, `${nb.i + 1} di ${nb.seq.length}`),
       el('button', { class: 'bar-btn', disabled: !nb.next, 'aria-label': 'Attività successiva', html: ICONS.chevron, onclick: () => goNeighbor(1) })));
     attachPagerSwipe(p);
+  } else {
+    // diagnostica temporanea: perché non ci sono attività vicine
+    p.append(el('p', { class: 'footnote nav-diag' },
+      `↔ non disponibile · aperte ${navSeq.length} · sequenza ${nb.seq.length} · posizione ${nb.i} · attive ${activeTasks(listId).length}${navErr ? ` · errore: ${navErr}` : ''}`));
   }
   if (route.slide) { p.classList.add(route.slide > 0 ? 'slide-in-next' : 'slide-in-prev'); delete route.slide; }
   p.append(
