@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.9';
+const APP_VERSION = '1.0.10';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -1915,12 +1915,29 @@ function bindChrome() {
 
 function registerSW() {
   if (!('serviceWorker' in navigator) || location.protocol === 'file:' || window.GT_CONFIG?.noServiceWorker) return;
+  let started = Date.now(); // avvio o ultimo ritorno nell'app
+  // Nuova versione pronta: si applica da sola all'avvio o quando torni nell'app (se non stai scrivendo),
+  // altrimenti compare il pulsante "Aggiorna". Prima restava in attesa finché Android non chiudeva l'app.
+  const offer = (w) => {
+    if (!w || !navigator.serviceWorker.controller) return;
+    state.updateReady = w;
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+    if (!typing && !pendingEdits.size && Date.now() - started < 20_000) {
+      flushEdits();
+      w.postMessage('skipWaiting');
+    } else renderBanners();
+  };
   navigator.serviceWorker.register('sw.js').then((reg) => {
+    if (reg.waiting) offer(reg.waiting); // scaricata in una sessione precedente
     reg.addEventListener('updatefound', () => {
       const w = reg.installing;
-      w?.addEventListener('statechange', () => {
-        if (w.state === 'installed' && navigator.serviceWorker.controller) { state.updateReady = w; renderBanners(); }
-      });
+      w?.addEventListener('statechange', () => { if (w.state === 'installed') offer(w); });
+    });
+    // controllo di nuove versioni a ogni ritorno nell'app
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      started = Date.now();
+      if (reg.waiting) offer(reg.waiting); else reg.update().catch(() => {});
     });
   }).catch(() => {});
   let reloaded = false;
