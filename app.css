@@ -481,9 +481,6 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
 .detail, .detail *, .swipe-area, .swipe-area * { touch-action: pan-y pinch-zoom; }
 .proc-swipe { color: var(--muted); font-weight: 400; }
 
-/* Titoli al massimo 3 righe (il testo completo è nel dettaglio) */
-.task-title.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
-.chip.ctx-chip { color: var(--accent); font-weight: 600; }
 /* Sottoattività: freccetta grande per aprire / chiudere */
 .fold {
   flex: none; align-self: center; display: grid; place-items: center;
@@ -494,3 +491,20 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
 .fold.closed svg { transform: none; } /* chiusa: freccia in giù = apri */
 .chip.sub-count { padding: .05rem .55rem; border-radius: 1rem; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .chip.sub-count .ico svg { width: 1rem; height: 1rem; }
+
+/* Telefono in orizzontale: barre più basse, così resta spazio per le attività */
+@media (orientation: landscape) and (max-height: 540px) {
+  :root { --nav-h: 44px; }
+  .appbar { min-height: calc(40px + env(safe-area-inset-top)); }
+  .appbar h1 { font-size: calc(1.05rem * var(--tx)); }
+  .appbar .logo { width: 24px; height: 24px; }
+  .bar-btn { width: 38px; height: 38px; }
+  .bar-btn svg { width: 22px; height: 22px; }
+  .bottomnav button { gap: 0; padding: .1rem; font-size: .68rem; }
+  .bottomnav .pill-ico { height: 24px; width: min(3rem, 92%); }
+  .bottomnav .pill-ico svg { width: 20px; height: 20px; }
+  .bottomnav .badge { top: 0; min-width: 1.1rem; height: 1.1rem; line-height: 1.1rem; font-size: .65rem; }
+  main { padding-bottom: calc(var(--nav-h) + 4rem + env(safe-area-inset-bottom)); }
+  .fab { bottom: calc(var(--nav-h) + .6rem + env(safe-area-inset-bottom)); height: 40px; font-size: 16px; }
+  .acct-btn .avatar { width: 30px; height: 30px; font-size: 15px; }
+}

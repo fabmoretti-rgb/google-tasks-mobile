@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.13';
+const APP_VERSION = '1.0.14';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -100,7 +100,7 @@ const prefs = Object.assign({
   theme: 'auto', scale: 1, font: 'system', hiRead: false, niceCase: false, home: 'today',
   sort: 'manual', showCompleted: true, searchShowDone: false,
   roles: {}, waitDays: 7, contexts: DEFAULT_CONTEXTS, lastReview: null, reviewChecks: {}, recent: [],
-  titleLines: '3', foldOpen: [], foldClosed: [],
+  foldOpen: [], foldClosed: [],
 }, LS.get('prefs', {}));
 const savePrefs = () => LS.set('prefs', prefs);
 
@@ -864,18 +864,6 @@ function render({ soft = false, top = false } = {}) {
   def.render(page);
   main.replaceChildren(page);
   main.scrollTop = top ? 0 : scroll;
-  requestAnimationFrame(() => markClampedTitles(page));
-}
-
-function markClampedTitles(root) {
-  for (const tt of root.querySelectorAll('.task-title.clamp')) {
-    if (tt.scrollHeight <= tt.clientHeight + 2 || !tt.dataset.ctx) continue;
-    const main = tt.parentElement;
-    let meta = main.querySelector('.meta');
-    if (!meta) { meta = el('div', { class: 'meta' }); tt.after(meta); }
-    if (meta.querySelector('.ctx-chip')) continue;
-    meta.prepend(...tt.dataset.ctx.split(' ').map((c) => el('span', { class: 'chip ctx-chip' }, c)));
-  }
 }
 
 /* ---------- Riga attività (con gesti) ---------- */
@@ -940,10 +928,7 @@ function taskRow(t, listId, { depth = 0, showList = false, q = '', snippet = nul
     onclick: (e) => { e.stopPropagation(); toggleDone(listId, t.id); },
   }),
   el('div', { class: 'task-main' },
-    el('div', {
-      class: `task-title${prefs.titleLines === 'full' || q ? '' : ' clamp'}`,
-      dataset: { ctx: [...title.matchAll(CTX_RE)].map((m) => m[2]).join(' ') },
-    }, q ? highlight(title, q) : decorateTitle(title),
+    el('div', { class: 'task-title' }, q ? highlight(title, q) : decorateTitle(title),
       t.notes && !WAIT_RE.test(t.notes) ? el('span', { class: 'notes-mark', html: ICONS.notes, title: 'Ha delle note' }) : null),
     meta.length ? el('div', { class: 'meta' }, meta) : null,
     snippet ? el('div', { class: 'meta' }, highlight(snippet, q)) : null),
@@ -1610,7 +1595,6 @@ function viewSettings(p) {
       el('div', { class: 'field' }, el('span', { class: 'lab' }, 'Carattere'), chipset([['system', 'Di sistema (Roboto)'], ['atkinson', 'Atkinson Hyperlegible']], prefs.font, (v) => setPref('font', v))),
       sw('Alta leggibilità', 'Carattere Atkinson, interlinea ampia, testi secondari più scuri, nomi degli elenchi con l’iniziale maiuscola', 'hiRead'),
       sw('Nomi degli elenchi con l’iniziale maiuscola', '“Prossime azioni” invece di “PROSSIME AZIONI”', 'niceCase'),
-      el('div', { class: 'field' }, el('span', { class: 'lab' }, 'Titoli lunghi negli elenchi'), chipset([['3', 'Al massimo 3 righe'], ['full', 'Sempre completi']], prefs.titleLines, (v) => setPref('titleLines', v))),
       el('div', { class: 'field' }, el('span', { class: 'lab' }, 'Schermata iniziale'), chipset([['today', 'Oggi'], ['lists', 'Elenchi'], ['inbox', 'INBOX']], prefs.home, (v) => setPref('home', v)))),
     el('section', { class: 'section' }, el('h3', {}, 'GTD'),
       el('p', { class: 'sub' }, 'Quale elenco svolge ogni ruolo. “Automatico” lo riconosce dal nome.'),
