@@ -476,3 +476,6 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
 .slide-in-next { animation: slideNext .18s ease-out; }
 .slide-in-prev { animation: slidePrev .18s ease-out; }
 @media (prefers-reduced-motion: reduce) { .slide-in-next, .slide-in-prev { animation: none; } }
+
+/* Nel dettaglio lo scorrimento orizzontale serve a cambiare attività, anche sopra i campi */
+.detail, .detail * { touch-action: pan-y pinch-zoom; }

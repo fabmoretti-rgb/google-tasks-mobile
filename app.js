@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.8';
+const APP_VERSION = '1.0.9';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -944,24 +944,36 @@ function parentContextRow(t, listId) {
   el('span', { class: 'task-go', html: ICONS.chevron, 'aria-hidden': 'true' })));
 }
 
-/** Scorrimento orizzontale deciso (non un tocco, non uno scroll verticale) → attività vicina */
+/** Scorrimento orizzontale deciso (non un tocco, non uno scroll verticale) → attività vicina.
+ *  Eventi "touch": il browser li consegna fino alla fine anche se nel frattempo scorre la pagina
+ *  o il dito parte sopra un campo di testo (con i "pointer" il gesto veniva annullato). */
 function attachPagerSwipe(area) {
-  let sx = 0; let sy = 0; let st = 0; let on = false;
-  area.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse' || e.target.closest('select, input[type="date"]')) { on = false; return; }
-    on = true; sx = e.clientX; sy = e.clientY; st = Date.now();
-  });
-  area.addEventListener('pointercancel', () => { on = false; });
-  area.addEventListener('pointerup', (e) => {
+  let sx = 0; let sy = 0; let st = 0; let on = false; let horiz = null;
+  const reset = () => { area.style.transition = 'transform .15s'; area.style.transform = ''; };
+  area.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1 || e.target.closest('select, input[type="date"]')) { on = false; return; }
+    const p = e.touches[0];
+    on = true; horiz = null; sx = p.clientX; sy = p.clientY; st = Date.now();
+    area.style.transition = '';
+  }, { passive: true });
+  area.addEventListener('touchmove', (e) => {
+    if (!on) return;
+    if (e.touches.length !== 1) { on = false; reset(); return; }
+    const p = e.touches[0];
+    const dx = p.clientX - sx; const dy = p.clientY - sy;
+    if (horiz === null && (Math.abs(dx) > 12 || Math.abs(dy) > 12)) horiz = Math.abs(dx) > Math.abs(dy) * 1.2;
+    if (horiz) area.style.transform = `translateX(${dx * 0.35}px)`; // il contenuto segue il dito
+  }, { passive: true });
+  area.addEventListener('touchcancel', () => { on = false; reset(); }, { passive: true });
+  area.addEventListener('touchend', (e) => {
     if (!on) return;
     on = false;
-    const dx = e.clientX - sx; const dy = e.clientY - sy;
-    if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6 || Date.now() - st > 700) return;
-    if (window.getSelection?.().toString()) return; // stavi selezionando del testo
+    reset();
+    const p = e.changedTouches[0];
+    const dx = p.clientX - sx; const dy = p.clientY - sy;
+    if (!horiz || Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.7 || Date.now() - st > 900) return;
     goNeighbor(dx < 0 ? 1 : -1);
-  });
-  // il browser non deve usare lo scorrimento orizzontale per altro
-  area.style.touchAction = 'pan-y pinch-zoom';
+  }, { passive: true });
 }
 
 function attachGestures(row, node, { right, left, long }) {
