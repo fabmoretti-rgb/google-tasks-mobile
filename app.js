@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.7';
+const APP_VERSION = '1.0.8';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -297,7 +297,9 @@ let flushing = false;
 const saveOutbox = () => { LS.set('outbox', outbox); LS.set('idmap', idMap); };
 const realId = (id) => (id && idMap[id]) || id;
 
+let localSeq = 0; // cresce a ogni modifica fatta sul telefono
 function enqueue(op) {
+  localSeq++;
   outbox.push({ ...op, opId: uid() });
   saveOutbox();
   flushOutbox();
@@ -425,9 +427,12 @@ async function syncAll() {
   if (outbox.length) return; // ancora modifiche in coda (offline): non sovrascrivere
   state.syncing = true;
   setBusy();
+  const seq0 = localSeq;
   try {
     const lists = await apiAll('/users/@me/lists', { maxResults: 100 });
     const all = await Promise.all(lists.map((l) => apiAll(taskPath(l.id), { maxResults: 100, showCompleted: true, showHidden: true })));
+    // se nel frattempo hai modificato qualcosa, questi dati sono già vecchi: li scarto e riprovo tra poco
+    if (localSeq !== seq0 || outbox.length) { scheduleSync(2000); return; }
     store.lists = lists;
     store.tasks = new Map(lists.map((l, i) => [l.id, all[i].filter((t) => !t.deleted)]));
     // le modifiche che stai ancora scrivendo restano visibili
@@ -848,6 +853,33 @@ function render({ soft = false, top = false } = {}) {
 }
 
 /* ---------- Riga attività (con gesti) ---------- */
+/* Sequenza delle attività visibili quando ne apri una: nel dettaglio si scorre alla precedente/successiva */
+let navSeq = [];
+function openFromRow(listId, id) {
+  const rows = [...document.querySelectorAll('#main .task[data-id]')];
+  navSeq = rows.map((n) => ({ list: n.dataset.list, id: n.dataset.id }));
+  go({ v: 'task', list: listId, id });
+}
+function navNeighbors(listId, id) {
+  const lid = realId(listId); const tid = realId(id);
+  let seq = navSeq.filter((x) => findTask(x.list, x.id));
+  let i = seq.findIndex((x) => realId(x.list) === lid && realId(x.id) === tid);
+  if (i < 0) { // aperta da un link: uso l'ordine dell'elenco
+    const t = findTask(lid, tid);
+    seq = t && isDone(t)
+      ? tasksOf(lid).filter(isDone).sort((a, b) => (b.completed || '').localeCompare(a.completed || '')).map((x) => ({ list: lid, id: x.id }))
+      : orderActive(tasksOf(lid)).map(({ t: x }) => ({ list: lid, id: x.id }));
+    i = seq.findIndex((x) => x.id === tid);
+  }
+  return { seq, i, prev: i > 0 ? seq[i - 1] : null, next: i >= 0 && i < seq.length - 1 ? seq[i + 1] : null };
+}
+function goNeighbor(dir) {
+  const nb = navNeighbors(route.list, route.id);
+  const to = dir > 0 ? nb.next : nb.prev;
+  if (!to) { toast(dir > 0 ? 'È l’ultima attività' : 'È la prima attività'); return; }
+  go({ v: 'task', list: to.list, id: to.id, slide: dir }, { replace: true });
+}
+
 function taskRow(t, listId, { depth = 0, showList = false, q = '', snippet = null, subTag = false } = {}) {
   if (t.__ctx) return parentContextRow(t.__ctx, listId);
   const done = isDone(t);
@@ -868,9 +900,10 @@ function taskRow(t, listId, { depth = 0, showList = false, q = '', snippet = nul
 
   const node = el('div', {
     class: `task${done ? ' done' : ''}${depth ? ' sub' : ''}`,
+    dataset: { id: t.id, list: realId(listId) },
     role: 'button', tabindex: 0, 'aria-label': `${spoken}. Tocca per aprire.`,
-    onclick: () => go({ v: 'task', list: listId, id: t.id }),
-    onkeydown: (e) => { if (e.key === 'Enter') go({ v: 'task', list: listId, id: t.id }); },
+    onclick: () => openFromRow(listId, t.id),
+    onkeydown: (e) => { if (e.key === 'Enter') openFromRow(listId, t.id); },
   },
   el('button', {
     class: 'check', 'aria-label': `${done ? 'Riapri' : 'Completa'}: ${title}`, html: done ? ICONS.done : ICONS.circle,
@@ -901,13 +934,34 @@ function parentContextRow(t, listId) {
   return el('li', { class: 'trow' }, el('div', {
     class: `task search-parent${isDone(t) ? ' done' : ''}`, role: 'button', tabindex: 0,
     'aria-label': `${t.title || '(senza titolo)'}, attività di riferimento. Tocca per aprire.`,
-    onclick: () => go({ v: 'task', list: listId, id: t.id }),
+    dataset: { id: t.id, list: realId(listId) },
+    onclick: () => openFromRow(listId, t.id),
   },
   el('span', { class: 'check', html: isDone(t) ? ICONS.done : ICONS.circle, 'aria-hidden': 'true' }),
   el('div', { class: 'task-main' },
     el('div', { class: 'task-title' }, decorateTitle(t.title || '(senza titolo)')),
     el('div', { class: 'meta' }, el('span', { class: 'chip parent-chip' }, 'Attività di riferimento'))),
   el('span', { class: 'task-go', html: ICONS.chevron, 'aria-hidden': 'true' })));
+}
+
+/** Scorrimento orizzontale deciso (non un tocco, non uno scroll verticale) → attività vicina */
+function attachPagerSwipe(area) {
+  let sx = 0; let sy = 0; let st = 0; let on = false;
+  area.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' || e.target.closest('select, input[type="date"]')) { on = false; return; }
+    on = true; sx = e.clientX; sy = e.clientY; st = Date.now();
+  });
+  area.addEventListener('pointercancel', () => { on = false; });
+  area.addEventListener('pointerup', (e) => {
+    if (!on) return;
+    on = false;
+    const dx = e.clientX - sx; const dy = e.clientY - sy;
+    if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6 || Date.now() - st > 700) return;
+    if (window.getSelection?.().toString()) return; // stavi selezionando del testo
+    goNeighbor(dx < 0 ? 1 : -1);
+  });
+  // il browser non deve usare lo scorrimento orizzontale per altro
+  area.style.touchAction = 'pan-y pinch-zoom';
 }
 
 function attachGestures(row, node, { right, left, long }) {
@@ -1079,6 +1133,16 @@ function viewTask(p) {
   const wchip = waitingChip(t, listId);
 
   p.classList.add('detail');
+  // precedente / successiva: frecce in alto e scorrimento orizzontale del dito
+  const nb = navNeighbors(listId, t.id);
+  if (nb.seq.length > 1 && nb.i >= 0) {
+    p.append(el('div', { class: 'pager' },
+      el('button', { class: 'bar-btn pg-prev', disabled: !nb.prev, 'aria-label': 'Attività precedente', html: ICONS.chevron, onclick: () => goNeighbor(-1) }),
+      el('span', { class: 'pg-pos' }, `${nb.i + 1} di ${nb.seq.length}`),
+      el('button', { class: 'bar-btn', disabled: !nb.next, 'aria-label': 'Attività successiva', html: ICONS.chevron, onclick: () => goNeighbor(1) })));
+    attachPagerSwipe(p);
+  }
+  if (route.slide) { p.classList.add(route.slide > 0 ? 'slide-in-next' : 'slide-in-prev'); delete route.slide; }
   p.append(
     el('label', { class: 'field' }, el('span', { class: 'lab' }, 'Titolo'), title),
     el('label', { class: 'field' }, el('span', { class: 'lab' }, 'Note'), notes, noteLinks),
@@ -1507,6 +1571,8 @@ function viewHelp(p) {
     el('h2', { class: 'h2' }, 'Gesti sulle attività'),
     el('ul', {}, row('Tocca', 'apri i dettagli'), row('Tocca il cerchio', 'completa (con Annulla)'), row('Scorri verso destra', 'completa'),
       row('Scorri verso sinistra o tieni premuto', 'menu azioni: scadenza, sposta, delega, elimina'), row('Tasto Indietro', 'torna alla schermata precedente')),
+    el('h2', { class: 'h2' }, 'Nel dettaglio di un’attività'),
+    el('ul', {}, row('Scorri a sinistra / a destra', 'attività successiva / precedente, nell’ordine della schermata da cui l’hai aperta (anche frecce ‹ › in alto)'), row('Esporta / copia', 'dal menu ⋮ di un elenco, dai risultati della ricerca o da Altro')),
     el('h2', { class: 'h2' }, 'In basso'),
     el('ul', {}, row('Oggi', 'riepilogo, scadute, oggi, prossimi 7 giorni'), row('Elenchi', 'tutti i tuoi elenchi'), row('INBOX', 'elabora una voce alla volta'),
       row('Cerca', 'in titoli e note di tutti gli elenchi'), row('Altro', 'revisione, contesti, deleghe, impostazioni'), row('+ Nuova', 'aggiungi un’attività')),

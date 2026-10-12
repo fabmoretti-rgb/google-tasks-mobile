@@ -465,3 +465,14 @@ dialog.sheet::backdrop { background: rgba(0, 0, 0, .45); }
 /* Esporta / copia */
 .export-view { min-height: 32vh; max-height: 45vh; font-family: Consolas, "Roboto Mono", monospace; font-size: .85em; line-height: 1.4; white-space: pre-wrap; overflow: auto; margin-top: .5rem; }
 .export-footer { flex-wrap: wrap; }
+
+/* Dettaglio: attività precedente / successiva */
+.pager { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: .5rem 0 0; }
+.pager .bar-btn:disabled { opacity: .3; }
+.pager .pg-prev svg { transform: rotate(180deg); }
+.pg-pos { color: var(--muted); font-size: .9em; }
+@keyframes slideNext { from { transform: translateX(14%); opacity: .4; } to { transform: none; opacity: 1; } }
+@keyframes slidePrev { from { transform: translateX(-14%); opacity: .4; } to { transform: none; opacity: 1; } }
+.slide-in-next { animation: slideNext .18s ease-out; }
+.slide-in-prev { animation: slidePrev .18s ease-out; }
+@media (prefers-reduced-motion: reduce) { .slide-in-next, .slide-in-prev { animation: none; } }

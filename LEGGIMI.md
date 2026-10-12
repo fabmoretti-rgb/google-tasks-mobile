@@ -11,6 +11,7 @@ App web installabile (PWA) per usare **Google Tasks con gli strumenti GTD** sul 
 - **Elabora INBOX**: una voce alla volta, con scelte colorate compatte. C'è anche **Da leggere** (se esiste un elenco come "DA LEGGERE - VERIFICARE"; si imposta in Impostazioni → GTD) e **Altro elenco…** per scegliere tra tutti gli elenchi.
 - **Revisione settimanale**, **Contesti**, **Deleghe in corso**, **Ricerca** con le ultime 5 ricerche.
 - Nei risultati della ricerca le **sottoattività** sono rientrate, con barra blu ed etichetta; se l'attività principale non contiene le parole cercate compare sopra in grigio come *Attività di riferimento*.
+- Nel **dettaglio di un'attività** si passa alla precedente/successiva **scorrendo il dito a sinistra o a destra** (o con le frecce ‹ › in alto, con "2 di 5"), nell'ordine della schermata da cui l'hai aperta; *Indietro* torna all'elenco.
 - **Esporta / copia** (dai risultati della ricerca, dal menu ⋮ di un elenco o da *Altro*): testo semplice o **Markdown** in un riquadro, con *Copia tutto*, *Condividi* (WhatsApp, email, Keep…) e *Scarica*.
 - **Gesti sulle attività**:
   - scorri a destra per completare;
