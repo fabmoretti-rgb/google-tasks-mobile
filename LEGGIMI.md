@@ -15,6 +15,7 @@ App web installabile (PWA) per usare **Google Tasks con gli strumenti GTD** sul 
 - **Sottoattività richiudibili**: freccetta a destra dell'attività; nell'elenco Progetti partono chiuse, altrove aperte; da chiuse si vede quante sono e quante sono scadute. Menu ⋮ dell'elenco → *Chiudi / Apri tutte*.
 - In **Elabora INBOX** scorri a sinistra per saltare una voce, a destra per tornare a quella saltata.
 - **Telefono in orizzontale**: barra gialla e pulsanti diventano una colonna stretta a sinistra e il contenuto usa tutta l'altezza dello schermo; il titolo della schermata compare in cima alla pagina.
+- **Cambiare elenco al volo**: dentro un elenco tocca il suo nome nella barra gialla (con la freccetta ▾) e scegli un altro elenco.
 - **Esporta / copia** (dai risultati della ricerca, dal menu ⋮ di un elenco o da *Altro*): testo semplice o **Markdown** in un riquadro, con *Copia tutto*, *Condividi* (WhatsApp, email, Keep…) e *Scarica*.
 - **Gesti sulle attività**:
   - scorri a destra per completare;

@@ -1,6 +1,6 @@
 // Service worker: rende l'app installabile e la apre anche senza rete
 // (i dati arrivano da Google; senza rete si vedono le ultime attività salvate).
-const VERSION = 'tasks-gtd-1.0.15';
+const VERSION = 'tasks-gtd-1.0.16';
 const SHELL = [
   './', './index.html', './app.css', './app.js', './config.js', './manifest.webmanifest',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',

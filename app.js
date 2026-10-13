@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.15';
+const APP_VERSION = '1.0.16';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -832,7 +832,13 @@ function render({ soft = false, top = false } = {}) {
   const isRoot = !!TABS[v.v];
 
   // Barra superiore
-  $('#title').textContent = def.title();
+  // nel singolo elenco il titolo è un pulsante: toccandolo si passa a un altro elenco
+  const switchable = v.v === 'list' && store.lists.length > 1;
+  const tEl = $('#title');
+  tEl.replaceChildren(el('span', { class: 'tt' }, def.title()), switchable ? el('span', { class: 'tdrop', html: ICONS.expand, 'aria-hidden': 'true' }) : null);
+  tEl.classList.toggle('switchable', switchable);
+  tEl.onclick = switchable ? openListSwitcher : null;
+  if (switchable) { tEl.setAttribute('role', 'button'); tEl.tabIndex = 0; tEl.setAttribute('aria-label', `${def.title()}: tocca per passare a un altro elenco`); } else { tEl.removeAttribute('role'); tEl.removeAttribute('tabindex'); tEl.removeAttribute('aria-label'); }
   $('#backBtn').hidden = isRoot || def.gate;
   $('#logo').hidden = !isRoot && !def.gate;
   const actions = [];
@@ -861,7 +867,11 @@ function render({ soft = false, top = false } = {}) {
   if (soft && v.v === 'inbox' && procDirty) return;
   const scroll = main.scrollTop;
   const page = el('div', { class: 'page' });
-  if (!def.gate) page.append(el('div', { class: 'land-title', 'aria-hidden': 'true' }, def.title())); // visibile solo in orizzontale
+  if (!def.gate) { // visibile solo in orizzontale (la barra gialla diventa una colonna)
+    page.append(switchable
+      ? el('button', { class: 'land-title switchable', onclick: openListSwitcher, 'aria-label': `${def.title()}: tocca per passare a un altro elenco` }, def.title(), el('span', { class: 'tdrop', html: ICONS.expand }))
+      : el('div', { class: 'land-title', 'aria-hidden': 'true' }, def.title()));
+  }
   def.render(page);
   main.replaceChildren(page);
   main.scrollTop = top ? 0 : scroll;
@@ -1767,6 +1777,24 @@ function pickList(title, excludeId) {
         })));
       onClose(() => resolve(chosen));
     });
+  });
+}
+
+/** Tocco sul nome dell'elenco in alto: elenco degli elenchi, quello attuale evidenziato */
+function openListSwitcher() {
+  flushEdits();
+  const cur = realId(route.id);
+  sheet((s, close) => {
+    s.append(el('h2', {}, 'Vai all’elenco'), el('div', { class: 'sheet-actions list-switch' }, store.lists.map((l) => {
+      const r = roleOf(l.id);
+      const n = activeTasks(l.id).length;
+      return el('button', {
+        class: l.id === cur ? 'current' : null, 'aria-current': l.id === cur ? 'true' : null,
+        onclick: () => { close(); if (l.id !== cur) setTimeout(() => go({ v: 'list', id: l.id }, { replace: true }), 60); },
+      }, icon(r === 'waiting' ? 'hourglass' : r === 'projects' ? 'folder' : r === 'someday' ? 'cloud' : r === 'reading' ? 'notes' : r === 'inbox' ? 'inbox' : 'lists'),
+      el('span', { class: 'grow' }, listName(l), r ? el('small', { class: 'role-hint' }, ROLE_LABELS[r]) : null),
+      el('span', { class: 'ls-count' }, n));
+    })));
   });
 }
 
