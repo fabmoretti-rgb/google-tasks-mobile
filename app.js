@@ -6,7 +6,7 @@
    stessi elenchi GTD, @contesti nel titolo, riga "⏳ In attesa dal …" nelle note.
    ========================================================================= */
 
-const APP_VERSION = '1.0.16';
+const APP_VERSION = '1.0.17';
 const API = 'https://tasks.googleapis.com/tasks/v1';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
@@ -835,7 +835,7 @@ function render({ soft = false, top = false } = {}) {
   // nel singolo elenco il titolo è un pulsante: toccandolo si passa a un altro elenco
   const switchable = v.v === 'list' && store.lists.length > 1;
   const tEl = $('#title');
-  tEl.replaceChildren(el('span', { class: 'tt' }, def.title()), switchable ? el('span', { class: 'tdrop', html: ICONS.expand, 'aria-hidden': 'true' }) : null);
+  tEl.replaceChildren(...[el('span', { class: 'tt' }, def.title()), switchable ? el('span', { class: 'tdrop', html: ICONS.expand, 'aria-hidden': 'true' }) : null].filter(Boolean));
   tEl.classList.toggle('switchable', switchable);
   tEl.onclick = switchable ? openListSwitcher : null;
   if (switchable) { tEl.setAttribute('role', 'button'); tEl.tabIndex = 0; tEl.setAttribute('aria-label', `${def.title()}: tocca per passare a un altro elenco`); } else { tEl.removeAttribute('role'); tEl.removeAttribute('tabindex'); tEl.removeAttribute('aria-label'); }

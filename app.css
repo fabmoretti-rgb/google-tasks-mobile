@@ -516,7 +516,7 @@ button.land-title { border: 0; background: transparent; color: inherit; padding:
     padding: calc(env(safe-area-inset-top) + 4px) 0 6px env(safe-area-inset-left);
     border-bottom-right-radius: 14px;
   }
-  .appbar h1 { display: none; }
+  .appbar h1, .appbar h1.switchable { display: none; }
   .appbar .logo { width: 26px; height: 26px; margin: 4px 0; }
   #barActions { display: flex; flex-direction: column; align-items: center; gap: 2px; }
   .bar-btn { width: min(38px, 9.5vh); height: min(38px, 9.5vh); }
@@ -524,11 +524,11 @@ button.land-title { border: 0; background: transparent; color: inherit; padding:
   .acct-btn .avatar { width: 28px; height: 28px; font-size: 14px; }
   .bottomnav {
     top: auto; right: auto; bottom: 0; width: var(--rail); height: auto;
-    display: flex; flex-direction: column;
+    display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;
     padding: 2px 0 calc(env(safe-area-inset-bottom) + 2px) env(safe-area-inset-left);
     border-top: 0; border-right: 1px solid var(--line); border-top-right-radius: 14px;
   }
-  .bottomnav button { height: min(46px, 11vh); gap: 0; padding: 0 2px; font-size: .66rem; }
+  .bottomnav button { height: min(44px, 9.5vh); gap: 0; padding: 0 2px; font-size: .66rem; }
   .bottomnav .pill-ico { height: 24px; width: 46px; }
   .bottomnav .pill-ico svg { width: 20px; height: 20px; }
   .bottomnav .badge { top: 0; left: calc(50% + .5rem); min-width: 1.1rem; height: 1.1rem; line-height: 1.1rem; font-size: .65rem; }
